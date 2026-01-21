@@ -2,6 +2,7 @@ theory NewDsc
   imports
     Dsc_Misc
     Bernstein_Split
+    "Real_Impl.Real_Impl"
 begin
 
 subsection \<open>Parameters for quadratic / linear steps\<close>
@@ -255,141 +256,173 @@ where
 lemma newdsc_domI_general:
   fixes \<delta> :: real and p :: nat and P :: "real poly"
   assumes \<delta>_pos: "\<delta> > 0"
-      and small: "\<And>a b. a < b \<Longrightarrow> b - a \<le> \<delta> \<Longrightarrow> Bernstein_changes p a b P \<le> 1"
-  shows "\<And>a b N. a < b \<Longrightarrow> N \<ge> 2 \<Longrightarrow> newdsc_dom (p,a,b,N,P)"
+    and small: "\<And>a b. a < b \<Longrightarrow> b - a \<le> \<delta> \<Longrightarrow> Bernstein_changes p a b P \<le> 1"
+  shows "\<And>a b N. a < b \<Longrightarrow> N \<ge> 2 \<Longrightarrow> newdsc_dom (p, a, b, N, P)"
 proof -
   define \<mu> where "\<mu> = (\<lambda>a b. mu \<delta> a b)"
-  let ?Prop = "\<lambda>n::nat. \<forall>a b N. \<mu> a b < n \<longrightarrow> a < b \<longrightarrow> N \<ge> 2 \<longrightarrow> newdsc_dom (p,a,b,N,P)"
+  let ?Prop =
+    "\<lambda>n::nat. \<forall>a b N. \<mu> a b < n \<longrightarrow> a < b \<longrightarrow> N \<ge> 2 \<longrightarrow> newdsc_dom (p, a, b, N, P)"
 
   have step: "\<And>n. (\<And>m. m < n \<Longrightarrow> ?Prop m) \<Longrightarrow> ?Prop n"
   proof -
-    fix n assume IH: "\<And>m. m < n \<Longrightarrow> ?Prop m"
+    fix n
+    assume IH: "\<And>m. m < n \<Longrightarrow> ?Prop m"
     show "?Prop n"
     proof (intro allI impI)
       fix a b :: real and N :: nat
-      assume abn: "\<mu> a b < n" and ab: "a < b" and N2: "N \<ge> 2"
-      show "newdsc_dom (p,a,b,N,P)"
+      assume mu_lt_n: "\<mu> a b < n"
+        and ab: "a < b"
+        and N2: "N \<ge> 2"
+      show "newdsc_dom (p, a, b, N, P)"
       proof (cases "a \<ge> b \<or> P = 0")
         case True
-        then show ?thesis by (auto intro: newdsc.domintros)
+        then show ?thesis
+          by (auto intro: newdsc.domintros)
+
       next
         case False
         let ?v = "Bernstein_changes p a b P"
         show ?thesis
         proof (cases "?v = 0 \<or> ?v = 1")
           case True
-          then show ?thesis using False by (auto intro: newdsc.domintros)
+          then show ?thesis
+            using False
+            by (auto intro: newdsc.domintros)
+
         next
           case False
           have v_ge2: "2 \<le> ?v"
-            using False Bernstein_changes_def by fastforce
+            using False Bernstein_changes_def
+            by fastforce
 
-          have \<delta>lt: "\<delta> < b - a"
+          have \<delta>_lt_width: "\<delta> < b - a"
           proof (rule ccontr)
             assume "\<not> \<delta> < b - a"
-            then have "b - a \<le> \<delta>" by linarith
-            then have "Bernstein_changes p a b P \<le> 1" using ab small by presburger
-            with v_ge2 show False by linarith
+            then have width_le_\<delta>: "b - a \<le> \<delta>"
+              by linarith
+            then have v_le1: "Bernstein_changes p a b P \<le> 1"
+              using ab small
+              by presburger
+            from v_ge2 v_le1 show False
+              by linarith
           qed
 
-          have mu_at: "\<mu> a b = mu \<delta> a b"
-            by (simp add: \<mu>_def)
+          have IH_at_mu: "?Prop (\<mu> a b)"
+            using IH mu_lt_n
+            by simp
 
-          have IH_at: "?Prop (\<mu> a b)"
-            using IH abn by simp
-
-          (* Case 1: a successful block step *)
+          (* Case 1: successful block step *)
           have block_case:
-            "\<forall>I. try_blocks p a b N P ?v = Some I \<longrightarrow> newdsc_dom (p,fst I,snd I,Nq N,P)"
+            "\<forall>I. try_blocks p a b N P ?v = Some I
+                 \<longrightarrow> newdsc_dom (p, fst I, snd I, Nq N, P)"
           proof (intro allI impI)
             fix I
             assume TB: "try_blocks p a b N P ?v = Some I"
-            have "N > 0" using N2 by simp
-            hence TB_width:
-              "snd I - fst I = (b - a) / of_nat N"
-              using try_blocks_SomeD[OF TB] using ab by blast
-            from \<delta>_pos ab \<delta>lt N2 TB_width
+            have N_pos: "N > 0"
+              using N2 by simp
+
+            have width_I: "snd I - fst I = (b - a) / of_nat N"
+              using try_blocks_SomeD[OF TB] ab
+              using N_pos by blast
+
             have mu_less: "\<mu> (fst I) (snd I) < \<mu> a b"
+              using \<delta>_pos ab \<delta>_lt_width N2 width_I
               by (simp add: \<mu>_def mu_subinterval_factor_strict)
-            have "fst I < snd I"
-              by (metis TB_width \<open>0 < N\<close> ab diff_gt_0_iff_gt divide_pos_pos of_nat_0_less_iff)
-            moreover have "Nq N \<ge> 2"
+
+            have fst_lt_snd: "fst I < snd I"
+              by (metis N_pos ab diff_gt_0_iff_gt divide_pos_pos of_nat_0_less_iff width_I)
+
+            have Nq_ge2': "Nq N \<ge> 2"
               using N2 Nq_ge_2 by simp
-            ultimately show "newdsc_dom (p,fst I,snd I,Nq N,P)"
-              using IH_at mu_less by blast
+
+            show "newdsc_dom (p, fst I, snd I, Nq N, P)"
+              using IH_at_mu mu_less fst_lt_snd Nq_ge2'
+              by blast
           qed
 
-          (* Case 2: a successful Newton step *)
+          (* Case 2: successful Newton step *)
           have newton_case:
             "\<forall>I. try_blocks p a b N P ?v = None \<longrightarrow>
                  try_newton p a b N P ?v = Some I \<longrightarrow>
-                 newdsc_dom (p,fst I,snd I,Nq N,P)"
+                 newdsc_dom (p, fst I, snd I, Nq N, P)"
           proof (intro allI impI)
             fix I
-            assume TB0: "try_blocks p a b N P ?v = None"
+            assume TB_none: "try_blocks p a b N P ?v = None"
             assume TN: "try_newton p a b N P ?v = Some I"
-            have "N > 0" using N2 by simp
-            hence TN_width:
-              "snd I - fst I = (b - a) / of_nat N"
-              using try_newton_SomeD[OF TN ab \<open>N > 0\<close>] by (simp add: Let_def)
-            from \<delta>_pos ab \<delta>lt N2 TN_width
+            have N_pos: "N > 0"
+              using N2 by simp
+
+            have width_I: "snd I - fst I = (b - a) / of_nat N"
+              using try_newton_SomeD[OF TN ab N_pos]
+              by (simp add: Let_def)
+
             have mu_less: "\<mu> (fst I) (snd I) < \<mu> a b"
+              using \<delta>_pos ab \<delta>_lt_width N2 width_I
               by (simp add: \<mu>_def mu_subinterval_factor_strict)
-            have "fst I < snd I"
-              using ab try_newton_SomeD[OF TN ab \<open>N > 0\<close>]
-            by (metis \<open>0 < N\<close> diff_gt_0_iff_gt divide_pos_pos of_nat_0_less_iff)
-            moreover have "Nq N \<ge> 2"
+
+            have fst_lt_snd: "fst I < snd I"
+              using try_newton_SomeD[OF TN ab N_pos]
+              by (metis N_pos ab diff_gt_0_iff_gt divide_pos_pos of_nat_0_less_iff)
+
+            have Nq_ge2': "Nq N \<ge> 2"
               using N2 Nq_ge_2 by simp
-            ultimately show "newdsc_dom (p,fst I,snd I,Nq N,P)"
-              using IH_at mu_less by blast
+
+            show "newdsc_dom (p, fst I, snd I, Nq N, P)"
+              using IH_at_mu mu_less fst_lt_snd Nq_ge2'
+              by blast
           qed
 
           (* Case 3: linear bisection step *)
-          have \<delta>_lt: "\<delta> < b - a" using \<delta>lt .
           define m where "m = (a + b) / 2"
-          have lessL: "\<mu> a m < \<mu> a b"
-            by (simp add: \<delta>_pos \<delta>_lt \<mu>_def ab m_def mu_halve_strict(1))
-          have lessR: "\<mu> m b < \<mu> a b"
-            by (simp add: \<delta>_pos \<delta>_lt \<mu>_def ab m_def mu_halve_strict(2))
+
           have am: "a < m" and mb: "m < b"
             using ab by (simp_all add: m_def)
-          have IH_L: "\<forall>N'. N' \<ge> 2 \<longrightarrow> newdsc_dom (p,a,m,N',P)"
-            using IH_at lessL am by blast
-          have IH_R: "\<forall>N'. N' \<ge> 2 \<longrightarrow> newdsc_dom (p,m,b,N',P)"
-            using IH_at lessR mb by blast
+
+          have mu_left_strict: "\<mu> a m < \<mu> a b"
+            by (simp add: \<mu>_def \<delta>_pos \<delta>_lt_width ab m_def mu_halve_strict(1))
+
+          have mu_right_strict: "\<mu> m b < \<mu> a b"
+            by (simp add: \<mu>_def \<delta>_pos \<delta>_lt_width ab m_def mu_halve_strict(2))
+
+          have IH_left: "\<forall>N'. N' \<ge> 2 \<longrightarrow> newdsc_dom (p, a, m, N', P)"
+            using IH_at_mu mu_left_strict am
+            by blast
+
+          have IH_right: "\<forall>N'. N' \<ge> 2 \<longrightarrow> newdsc_dom (p, m, b, N', P)"
+            using IH_at_mu mu_right_strict mb
+            by blast
 
           have lin_case:
             "try_blocks p a b N P ?v = None \<and> try_newton p a b N P ?v = None \<Longrightarrow>
-             newdsc_dom (p,a,m,Nlin N,P) \<and> newdsc_dom (p,m,b,Nlin N,P)"
+             newdsc_dom (p, a, m, Nlin N, P) \<and> newdsc_dom (p, m, b, Nlin N, P)"
           proof
-            assume bothNone: "try_blocks p a b N P ?v = None \<and> try_newton p a b N P ?v = None"
-            have Nlin2: "Nlin N \<ge> 2"
+            assume both_none:
+              "try_blocks p a b N P ?v = None \<and> try_newton p a b N P ?v = None"
+            have Nlin_ge2': "Nlin N \<ge> 2"
               by (rule Nlin_ge_2)
-            from IH_L Nlin2 show "newdsc_dom (p,a,m,Nlin N,P)"
+            from IH_left Nlin_ge2' show "newdsc_dom (p, a, m, Nlin N, P)"
               by blast
-            from IH_R Nlin2 show "newdsc_dom (p,m,b,Nlin N,P)"
+            from IH_right Nlin_ge2' show "newdsc_dom (p, m, b, Nlin N, P)"
               by blast
           qed
 
+          (* Dispatch by the option results of block/newton *)
           show ?thesis
           proof (cases "try_blocks p a b N P ?v")
             case (Some I)
             then show ?thesis
-              by (smt (verit) block_case fst_conv newdsc.domintros option.discI
-                  snd_conv)
+              by (smt (verit) block_case fst_conv newdsc.domintros option.discI snd_conv)
           next
             case None
             then show ?thesis
             proof (cases "try_newton p a b N P ?v")
               case (Some I)
               then show ?thesis
-                by (smt (verit) None fst_conv newdsc.domintros newton_case option.discI
-                    snd_conv)
+                by (smt (verit) None fst_conv newdsc.domintros newton_case option.discI snd_conv)
             next
               case None
               then show ?thesis
-                by (smt (verit) block_case fst_conv lin_case m_def newdsc.domintros
-                    snd_conv)
+                by (smt (verit) block_case fst_conv lin_case m_def newdsc.domintros snd_conv)
             qed
           qed
         qed
@@ -397,11 +430,14 @@ proof -
     qed
   qed
 
-  have "\<And>n. ?Prop n"
+  have all_Prop: "\<And>n. ?Prop n"
     by (rule less_induct, rule step)
-  then show "\<And>a b N. a < b \<Longrightarrow> N \<ge> 2 \<Longrightarrow> newdsc_dom (p,a,b,N,P)"
+
+  show "\<And>a b N. a < b \<Longrightarrow> N \<ge> 2 \<Longrightarrow> newdsc_dom (p, a, b, N, P)"
+    using all_Prop
     by blast
 qed
+
 
 lemma newdsc_terminates_squarefree_real:
   fixes P :: "real poly"
@@ -422,40 +458,44 @@ proof -
 qed
 
 lemma newdsc_correct:
-  assumes dom: "newdsc_dom (p,a,b,N,P)"
+  assumes dom: "newdsc_dom (p, a, b, N, P)"
       and deg: "degree P \<le> p"
       and P0:  "P \<noteq> 0"
   shows "\<forall>I \<in> set (newdsc p a b N P). dsc_pair_ok P I"
-using dom deg P0
+  using dom deg P0
 proof (induction p a b N P rule: newdsc.pinduct)
   case (1 p a b N P)
 
+  (* Expand one recursive call of newdsc. *)
   have newdsc_eq:
     "newdsc p a b N P =
        (if a \<ge> b \<or> P = 0 then []
         else
           (let v = Bernstein_changes p a b P in
            if v = 0 then []
-           else if v = 1 then [(a,b)]
+           else if v = 1 then [(a, b)]
            else
              (case try_blocks p a b N P v of
                 Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
               | None \<Rightarrow>
-                 (case try_newton p a b N P v of
-                    Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-                  | None \<Rightarrow>
-                      (let m  = (a + b) / 2;
-                           N' = Nlin N;
-                           mid_root = (if poly P m = 0 then [(m, m)] else [])
-                       in mid_root @ newdsc p a m N' P @ newdsc p m b N' P)))))"
-    using "1.hyps" newdsc.psimps by blast
+                  (case try_newton p a b N P v of
+                     Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+                   | None \<Rightarrow>
+                       (let m  = (a + b) / 2;
+                            N' = Nlin N;
+                            mid_root = (if poly P m = 0 then [(m, m)] else [])
+                        in mid_root @ newdsc p a m N' P @ newdsc p m b N' P)))))"
+    using "1.hyps" newdsc.psimps
+    by blast
 
   show ?case
   proof (cases "a \<ge> b \<or> P = 0")
+    (* Trivial case: empty interval or zero polynomial. *)
     case True
     then show ?thesis
       by (simp add: newdsc_eq dsc_pair_ok_def)
   next
+    (* Non-trivial interval with nonzero polynomial. *)
     case False
     hence ab: "a < b" and P0': "P \<noteq> 0"
       by auto
@@ -466,6 +506,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
 
     show ?thesis
     proof (cases "?v = 0")
+      (* Case 1: no sign changes \<Rightarrow> no roots in (a,b). *)
       case True
       then show ?thesis
         by (simp add: newdsc_eq Let_def)
@@ -473,32 +514,39 @@ proof (induction p a b N P rule: newdsc.pinduct)
       case v0_ne: False
       show ?thesis
       proof (cases "?v = 1")
+        (* Case 2: exactly one sign change \<Rightarrow> one root. *)
         case v1: True
         have v1_exact: "roots_in P a b = 1"
           using Bernstein_changes_1_one_root[OF deg' P0' ab v1] .
-        have dsc_ok_ab: "dsc_pair_ok P (a,b)"
+        have dsc_ok_ab: "dsc_pair_ok P (a, b)"
           using v1_exact ab
           by (simp add: dsc_pair_ok_def roots_in_def)
         show ?thesis
           using v1 v0_ne dsc_ok_ab
           by (simp add: newdsc_eq Let_def)
       next
+        (* Case 3: \<ge>2 sign changes \<Rightarrow> recursive decomposition. *)
         case v_ge2: False
         then have v_ge2': "?v \<ge> 2"
           using v0_ne
           by (smt (verit, ccfv_threshold) Bernstein_changes_def int_nat_eq)
 
+        (* Subcase A: successful block step. *)
         have IH_block:
           "\<And>I. \<lbrakk>try_blocks p a b N P ?v = Some I\<rbrakk> \<Longrightarrow>
                 \<forall>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). dsc_pair_ok P J"
-          using "1.IH"(4) False deg' v0_ne v_ge2 by blast
+          using "1.IH"(4) False deg' v0_ne v_ge2
+          by blast
 
+        (* Subcase B: successful Newton step. *)
         have IH_newton:
           "\<And>I. \<lbrakk>try_blocks p a b N P ?v = None;
                   try_newton p a b N P ?v = Some I\<rbrakk> \<Longrightarrow>
                 \<forall>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). dsc_pair_ok P J"
-          using "1.IH"(3) False deg' v0_ne v_ge2 by blast
+          using "1.IH"(3) False deg' v0_ne v_ge2
+          by blast
 
+        (* Subcase C: both failed \<Rightarrow> linear split. *)
         have IH_LR:
           "\<And>m N'.
              \<lbrakk>try_blocks p a b N P ?v = None;
@@ -514,10 +562,12 @@ proof (induction p a b N P rule: newdsc.pinduct)
              and N'_def: "N' = Nlin N"
           have IH_left:
             "\<forall>I\<in>set (newdsc p a m N' P). dsc_pair_ok P I"
-            using "1.IH" False deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2 by blast
+            using "1.IH" False deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2
+            by blast
           have IH_right:
             "\<forall>I\<in>set (newdsc p m b N' P). dsc_pair_ok P I"
-            using "1.IH" False deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2 by metis
+            using "1.IH" False deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2
+            by metis
           show "(\<forall>I\<in>set (newdsc p a m N' P). dsc_pair_ok P I) \<and>
                 (\<forall>I\<in>set (newdsc p m b N' P). dsc_pair_ok P I)"
             using IH_left IH_right by simp
@@ -532,7 +582,6 @@ proof (induction p a b N P rule: newdsc.pinduct)
           thus ?thesis
             using Some v0_ne v_ge2
             by (simp add: newdsc_eq Let_def)
-
         next
           case TB_None: None
           show ?thesis
@@ -550,18 +599,18 @@ proof (induction p a b N P rule: newdsc.pinduct)
             let ?N' = "Nlin N"
 
             from IH_LR[OF TB_None TN_None refl refl]
-            obtain LR_left LR_right
-              where left_ok:  "\<forall>I\<in>set (newdsc p a ?m ?N' P). dsc_pair_ok P I"
-                and right_ok: "\<forall>I\<in>set (newdsc p ?m b ?N' P). dsc_pair_ok P I"
+            have left_ok:  "\<forall>I\<in>set (newdsc p a ?m ?N' P). dsc_pair_ok P I"
+              and right_ok: "\<forall>I\<in>set (newdsc p ?m b ?N' P). dsc_pair_ok P I"
               by auto
 
+            (* Midpoint contributes singleton if root exactly at m. *)
             have mid_ok:
               "\<forall>I\<in>set (if poly P ?m = 0 then [(?m, ?m)] else []). dsc_pair_ok P I"
             proof (cases "poly P ?m = 0")
               case True
-              then have "set (if poly P ?m = 0 then [(?m,?m)] else []) = {(?m,?m)}"
+              then have "set (if poly P ?m = 0 then [(?m, ?m)] else []) = {(?m, ?m)}"
                 by auto
-              moreover have "dsc_pair_ok P (?m,?m)"
+              moreover have "dsc_pair_ok P (?m, ?m)"
                 using True by (simp add: dsc_pair_ok_def)
               ultimately show ?thesis by auto
             next
@@ -569,9 +618,10 @@ proof (induction p a b N P rule: newdsc.pinduct)
               then show ?thesis by (simp add: dsc_pair_ok_def)
             qed
 
+            (* Combine all three parts. *)
             show ?thesis
-              by (smt (verit) "1.hyps" P0' TB_None TN_None UnE ab left_ok mid_ok newdsc.psimps
-                  option.simps(4) right_ok set_append v0_ne v_ge2)
+              by (smt (verit) "1.hyps" P0' TB_None TN_None UnE ab left_ok mid_ok
+                  newdsc.psimps option.simps(4) right_ok set_append v0_ne v_ge2)
           qed
         qed
       qed
@@ -579,78 +629,19 @@ proof (induction p a b N P rule: newdsc.pinduct)
   qed
 qed
 
-lemma Bernstein_changes_point: "Bernstein_changes p a a P = 0"
-proof -
-  \<comment> \<open>1. Simplify the polynomial composition for interval [a, a]\<close>
-  let ?Q = "P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, a - a:]"
-  have "[:0, a - a:] = 0" by simp
-  hence "?Q = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p 0" by simp
-  also have "\<dots> = [:poly P a:]" 
-  by (simp add: pcompose_0')
-  finally have Q_val: "?Q = [:poly P a:]" .
-
-  \<comment> \<open>2. Analyze the Bernstein coefficients\<close>
-  \<comment> \<open>Bernstein_coeffs is defined as a list of specific coefficients of the transformed poly\<close>
-  have "Bernstein_coeffs p a a P = replicate (p+1) (poly P a)"
-  proof (rule nth_equalityI)
-    show "length (Bernstein_coeffs p a a P) = length (replicate (p + 1) (poly P a))"
-      unfolding Bernstein_coeffs_def by simp
-  next
-    fix i assume "i < length (Bernstein_coeffs p a a P)"
-    hence i_bounds: "i \<le> p" unfolding Bernstein_coeffs_def by simp
-    
-    \<comment> \<open>Calculate the term at index i\<close>
-    let ?R = "reciprocal_poly p ?Q \<circ>\<^sub>p [:1, 1:]"
-    
-    have "reciprocal_poly p ?Q = monom (poly P a) p"
-      using Q_val unfolding reciprocal_poly_def 
-      by (cases "poly P a = 0") (auto simp: monom_altdef Poly_append)
-    
-    hence R_eq: "?R = smult (poly P a) ([:1, 1:] ^ p)"
-    by (simp add: monom_altdef pcompose_hom.hom_power pcompose_pCons pcompose_smult)
-      
-    have "coeff ?R (p-i) = poly P a * real (p choose (p-i))"
-      using R_eq unfolding poly_binomial 
-      by (metis (mono_tags, lifting) R_eq coeff_linear_poly_power coeff_smult diff_le_self
-          mult.right_neutral power_one)
-         
-    have "inverse (real (p choose i)) * coeff ?R (p-i) = poly P a"
-      using \<open>coeff ?R (p-i) = ...\<close> binomial_symmetric[OF i_bounds]
-      by (simp add: field_simps)
-      
-    thus "Bernstein_coeffs p a a P ! i = replicate (p + 1) (poly P a) ! i"
-      unfolding Bernstein_coeffs_def using i_bounds
-      by (metis (no_types, lifting) Bernstein_coeffs_def \<open>i < length (Bernstein_coeffs p a a P)\<close>
-          add_0 diff_zero length_map length_upt nth_map_upt nth_replicate)
-  qed
-
-  \<comment> \<open>3. Changes of a constant list is 0\<close>
-  have "changes (replicate (p+1) (poly P a)) = 0"
-  proof (induction p)
-    case 0 then show ?case by simp
-  next
-    case (Suc n)
-    have "replicate (Suc n + 1) (poly P a) = poly P a # replicate (n + 1) (poly P a)"
-      by simp
-    then show ?case 
-      using Suc.IH changes.simps 
-      by (cases "poly P a = 0") (auto simp: mult_less_0_iff)
-  qed
-  
-  thus ?thesis unfolding Bernstein_changes_def 
-    by (simp add: \<open>Bernstein_coeffs p a a P = replicate (p+1) (poly P a)\<close>)
-qed
 
 lemma newdsc_complete:
   assumes dom: "newdsc_dom (p,a,b,N,P)"
       and deg: "degree P \<le> p"
       and P0:  "P \<noteq> 0"
-      and N0: "N > 0"
+      and N0:  "N > 0"
   shows "\<And>x. poly P x = 0 \<Longrightarrow> a < x \<Longrightarrow> x < b \<Longrightarrow>
              (\<exists>I\<in>set (newdsc p a b N P). fst I \<le> x \<and> x \<le> snd I)"
 using dom deg P0
 proof (induction p a b N P rule: newdsc.pinduct)
   case (1 p a b N P)
+
+  (* Unfold one step of newdsc (psimps). *)
   have newdsc_eq:
     "newdsc p a b N P =
        (if a \<ge> b \<or> P = 0 then []
@@ -673,6 +664,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
 
   show ?case
   proof -
+    (* Main pointwise statement for an arbitrary root x in (a,b). *)
     have H:
       "\<And>x::real. poly P x = 0 \<Longrightarrow> a < x \<Longrightarrow> x < b \<Longrightarrow>
              (\<exists>I\<in>set (newdsc p a b N P). fst I \<le> x \<and> x \<le> snd I)"
@@ -694,6 +686,8 @@ proof (induction p a b N P rule: newdsc.pinduct)
         from 1 have deg': "degree P \<le> p" by blast
 
         let ?v = "Bernstein_changes p a b P"
+
+        (* A root in (a,b) forces Bernstein_changes on (a,b) to be nonzero. *)
         have v_nonzero: "?v \<noteq> 0"
         proof
           assume "?v = 0"
@@ -707,6 +701,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
 
         show ?thesis
         proof (cases "?v = 1")
+          (* If v=1, newdsc returns [(a,b)] and it trivially covers x\<in>(a,b). *)
           case True
           then have v1: "?v = 1" by simp
           have cover: "fst (a,b) \<le> x \<and> x \<le> snd (a,b)"
@@ -732,6 +727,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
             using v_nonzero
             by (smt (verit, ccfv_threshold) Bernstein_changes_def int_nat_eq)
 
+          (* Induction hypotheses for the three recursive branches. *)
           have IH_block:
             "\<And>I x. \<lbrakk> try_blocks p a b N P ?v = Some I;
                        poly P x = 0; fst I < x; x < snd I \<rbrakk> \<Longrightarrow>
@@ -787,107 +783,106 @@ proof (induction p a b N P rule: newdsc.pinduct)
                 then have "m < x" and "x < b" using xb' mb by auto
                 then have Ex_right:
                   "\<exists>I\<in>set (newdsc p m b N' P). fst I \<le> x \<and> x \<le> snd I"
-                  by (simp add: "1.IH"(2) N'_def P0' TB0 TN0 deg' m_def rootx v_ne1 v_nonzero)
+                  using "1.IH"(2) N'_def P0' TB0 TN0 ab deg' m_def rootx v_ne1 v_nonzero
+                  by auto
                 then show ?thesis by blast
               qed
             qed
           qed
 
-          (* Now do the case split on try_blocks / try_newton / midpoint, like in newdsc_correct *)
-
+          (* Dispatch on the three control-flow branches of newdsc:
+             (A) blocks succeeds, (B) blocks fails but Newton succeeds, (C) both fail -> midpoint split. *)
           show ?thesis
           proof (cases "try_blocks p a b N P ?v")
             case (Some I)
             then have TB: "try_blocks p a b N P ?v = Some I" by simp
 
-
-            (* Geometric/P4-style argument: root in (a,b) lies in the block interval I *)
+            (* Branch A (blocks): show the root x lies strictly inside the chosen block interval I,
+               then apply IH on that subproblem and lift membership back to the top-level call. *)
             have pos_in_I: "fst I < x \<and> x < snd I"
             proof -
               \<comment> \<open>Use the property that variations are sub-additive upon splitting.\<close>
               \<comment> \<open>We assume a lemma like Bernstein_changes_split exists:\<close>
               \<comment> \<open>a < c < b \<Longrightarrow> V(a,b) \<ge> V(a,c) + V(c,b) + (if root at c then 1 else 0)\<close>
-              
+
               \<comment> \<open>Obtain properties of I from try_blocks\<close>
-              
+
               define w where "w = b - a"
               have "w > 0" using ab w_def by simp
               define B1 where "B1 = (a, a + w / of_nat N)"
               define B2 where "B2 = (b - w / of_nat N, b)"
-              have "N > 0" proof (rule ccontr)
+              have "N > 0"
+              proof (rule ccontr)
                 assume "\<not> N > 0"
                 hence "N = 0" by simp
                 hence zero_width: "w / of_nat N = 0" using w_def by simp
-                
+
                 \<comment> \<open>If N=0, the intervals collapse to points\<close>
                 have "B1 = (a, a)" "B2 = (b, b)"
                   using zero_width unfolding B1_def B2_def by auto
-                  
+
                 \<comment> \<open>Bernstein changes on a single point is always 0\<close>
                 have v1_0: "Bernstein_changes p (fst B1) (snd B1) P = 0"
                   by (simp add: Bernstein_changes_point \<open>B1 = (a, a)\<close>)
-                  
+
                 have v2_0: "Bernstein_changes p (fst B2) (snd B2) P = 0"
                   by (simp add: Bernstein_changes_point \<open>B2 = (b, b)\<close>)
 
                 have "try_blocks p a b N P ?v = None"
                   unfolding try_blocks_def Let_def w_def[symmetric]
-                  using \<open>N = 0\<close> v1_0 v2_0 v_ne1 v_nonzero 
+                  using \<open>N = 0\<close> v1_0 v2_0 v_ne1 v_nonzero
                   \<comment> \<open>We use the local definitions to match the logic\<close>
                   unfolding B1_def[symmetric] B2_def[symmetric]
                   by auto
-                
+
                 thus False using TB by simp
               qed
-             
 
-              have I_props: "fst I \<ge> a \<and> snd I \<le> b \<and> snd I - fst I = w / of_nat N" 
+              have I_props: "fst I \<ge> a \<and> snd I \<le> b \<and> snd I - fst I = w / of_nat N"
                 using TB \<open>0 < N\<close> ab try_blocks_SomeD(1,2,3) w_def by presburger
-              then have fst_le_snd: "fst I < snd I" 
+              then have fst_le_snd: "fst I < snd I"
                 using \<open>0 < N\<close> \<open>0 < w\<close> diff_gt_0_iff_gt by fastforce
               have v_I: "Bernstein_changes p (fst I) (snd I) P = ?v"
                 using TB unfolding try_blocks_def Let_def by (auto split: if_split_asm)
 
+              have "x \<noteq> snd I"
+              proof
+                assume "x = snd I"
+                then have "poly P (snd I) = 0" using root by simp
+                \<comment> \<open>P4 Property for roots at split point: V(a,b) >= V(a,c) + V(c,b) + 1\<close>
+                \<comment> \<open>We assume this standard property of Bernstein basis.\<close>
+                have "Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P + 1
+                        \<le> Bernstein_changes p a b P"
+                  using Bernstein_changes_split_root
+                  using \<open>poly P (snd I) = 0\<close> \<open>x = snd I\<close> ax deg' xb
+                  using P0' by blast
 
-                have "x \<noteq> snd I"
-                proof
-                  assume "x = snd I"
-                  then have "poly P (snd I) = 0" using root by simp
-                  \<comment> \<open>P4 Property for roots at split point: V(a,b) >= V(a,c) + V(c,b) + 1\<close>
-                  \<comment> \<open>We assume this standard property of Bernstein basis.\<close>
-                  have "Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P + 1 
-                        \<le> Bernstein_changes p a b P"
-                    using Bernstein_changes_split_root
-                    using \<open>poly P (snd I) = 0\<close> \<open>x = snd I\<close> ax deg' xb 
-                    using P0' by blast
-                  
-                  moreover have "Bernstein_changes p a (snd I) P = ?v"
-                    by (smt (verit, del_insts) TB fst_conv option.inject option.simps(3) snd_conv
-                        try_blocks_def)
-                  ultimately have "?v + 0 + 1 \<le> ?v"
+                moreover have "Bernstein_changes p a (snd I) P = ?v"
+                  by (smt (verit, del_insts) TB fst_conv option.inject option.simps(3) snd_conv
+                      try_blocks_def)
+                ultimately have "?v + 0 + 1 \<le> ?v"
                   by (smt (verit) Bernstein_changes_def int_nat_eq)
-                  thus False by simp
-                qed
-                have "x \<noteq> fst I"
-                proof
-                  assume "x = fst I"
-                  then have "poly P (fst I) = 0" using root by simp
-                  \<comment> \<open>P4 Property for roots at split point: V(a,b) >= V(a,c) + V(c,b) + 1\<close>
-                  \<comment> \<open>We assume this standard property of Bernstein basis.\<close>
-                  have "Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P + 1 
+                thus False by simp
+              qed
+              have "x \<noteq> fst I"
+              proof
+                assume "x = fst I"
+                then have "poly P (fst I) = 0" using root by simp
+                \<comment> \<open>P4 Property for roots at split point: V(a,b) >= V(a,c) + V(c,b) + 1\<close>
+                \<comment> \<open>We assume this standard property of Bernstein basis.\<close>
+                have "Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P + 1
                         \<le> Bernstein_changes p a b P"
-                    using Bernstein_changes_split_root 
-                    using \<open>x = fst I\<close> ax deg' root xb 
-                    using P0' by blast
-      
-                  
-                  moreover have "Bernstein_changes p (fst I) b P = ?v"
+                  using Bernstein_changes_split_root
+                  using \<open>x = fst I\<close> ax deg' root xb
+                  using P0' by blast
+
+                moreover have "Bernstein_changes p (fst I) b P = ?v"
                   by (smt (verit, ccfv_threshold) I_props TB fst_conv option.distinct(1) option.inject
                       try_blocks_def w_def)
-                  ultimately have "?v + 0 + 1 \<le> ?v"
+                ultimately have "?v + 0 + 1 \<le> ?v"
                   by (smt (verit) Bernstein_changes_def int_nat_eq)
-                  thus False by simp
-                qed
+                thus False by simp
+              qed
 
               have not_left: "\<not> x < fst I"
               proof
@@ -895,19 +890,19 @@ proof (induction p a b N P rule: newdsc.pinduct)
                 hence "a < x" "x < fst I" using ax by simp_all
                 \<comment> \<open>If x is in (a, fst I), then V(a, fst I) must be > 0\<close>
                 hence "Bernstein_changes p a (fst I) P > 0"
-                  using Bernstein_changes_pos_of_root[OF deg' P0' _ root] 
-                by (metis Bernstein_changes_def I_props(1) dual_order.order_iff_strict int_nat_eq
-                    order_less_asym')
+                  using Bernstein_changes_pos_of_root[OF deg' P0' _ root]
+                  by (metis Bernstein_changes_def I_props(1) dual_order.order_iff_strict int_nat_eq
+                      order_less_asym')
                 hence "Bernstein_changes p a (fst I) P \<ge> 1" by simp
-                
+
                 \<comment> \<open>Contradiction with sub-additivity\<close>
-                have "Bernstein_changes p a b P \<ge> 
+                have "Bernstein_changes p a b P \<ge>
                       Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P"
                   using Bernstein_changes_split[of a "fst I" b] ab I_props `a < x` `x < fst I` deg' fst_le_snd by auto
-                moreover have "Bernstein_changes p (fst I) b P \<ge> 
+                moreover have "Bernstein_changes p (fst I) b P \<ge>
                                Bernstein_changes p (fst I) (snd I) P"
                   using Bernstein_changes_split[of "fst I" "snd I" b] I_props fst_le_snd
-                by (smt (verit, del_insts) Bernstein_changes_def deg' int_nat_eq)
+                  by (smt (verit, del_insts) Bernstein_changes_def deg' int_nat_eq)
                 then have "?v \<ge> 1 + ?v"
                   using v_I \<open>1 \<le> Bernstein_changes p a (fst I) P\<close> calculation by auto
                 thus False by simp
@@ -920,13 +915,13 @@ proof (induction p a b N P rule: newdsc.pinduct)
                 hence "snd I < x" "x < b" using xb by simp_all
                 hence "Bernstein_changes p (snd I) b P \<ge> 1"
                   using Bernstein_changes_pos_of_root[OF deg' P0' _ root]
-                by (metis Bernstein_changes_def I_props Orderings.order_eq_iff int_nat_eq
-                    int_one_le_iff_zero_less not_le_imp_less not_less_iff_gr_or_eq)
-                
-                have "Bernstein_changes p a b P \<ge> 
+                  by (metis Bernstein_changes_def I_props Orderings.order_eq_iff int_nat_eq
+                      int_one_le_iff_zero_less not_le_imp_less not_less_iff_gr_or_eq)
+
+                have "Bernstein_changes p a b P \<ge>
                       Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P"
                   using Bernstein_changes_split[of a "snd I" b] ab I_props \<open>snd I < x\<close> deg' fst_le_snd xb by force
-                moreover have "Bernstein_changes p a (snd I) P \<ge> 
+                moreover have "Bernstein_changes p a (snd I) P \<ge>
                                Bernstein_changes p (fst I) (snd I) P"
                   using Bernstein_changes_split[of a "fst I" "snd I"] I_props fst_le_snd
                   by (smt (verit, best) TB fst_conv option.inject option.simps(3) try_blocks_def
@@ -947,13 +942,13 @@ proof (induction p a b N P rule: newdsc.pinduct)
                           and J_cov: "fst J \<le> x \<and> x \<le> snd J"
               by blast
 
+            (* Lift: in the blocks branch, newdsc returns exactly the recursive call on (fst I, snd I). *)
             have J_in_top: "J \<in> set (newdsc p a b N P)"
             proof -
               have "newdsc p a b N P = newdsc p (fst I) (snd I) (Nq N) P"
                 using newdsc_eq False v_ne1 v_nonzero TB
                 by (simp add: Let_def)
-              thus ?thesis
-                using J_in by simp
+              thus ?thesis using J_in by simp
             qed
 
             show ?thesis
@@ -965,151 +960,152 @@ proof (induction p a b N P rule: newdsc.pinduct)
               case (Some I)
               then have TN: "try_newton p a b N P ?v = Some I" by simp
 
-                (* Geometric/P4-style argument: root lies in the Newton interval I *)
-            have pos_in_I: "fst I < x \<and> x < snd I"
-            proof -
-              \<comment> \<open>1. Setup local context\<close>
-              define w where "w = b - a"
-              have "w > 0" using ab w_def by simp
-              
-              \<comment> \<open>2. Derive N > 0 by contradiction\<close>
-              have "N > 0"
-              proof (rule ccontr)
-                assume "\<not> N > 0"
-                hence "N = 0" by simp
-                
-                \<comment> \<open>If N=0, snap_window produces point intervals (width 0)\<close>
-                \<comment> \<open>Bernstein_changes on a point is 0\<close>
-                \<comment> \<open>Since v >= 2, the check 'v1 = v' or 'v2 = v' will fail\<close>
-                
-                \<comment> \<open>Unfold definitions to show try_newton returns None\<close>
-                have "try_newton p a b N P ?v = None"
-                  unfolding try_newton_def Let_def snap_window_def
-                  using \<open>N=0\<close> v_ge2 Bernstein_changes_point
-                  by (auto split: option.split)
-                  
-                thus False using TN by simp
-              qed
+              (* Branch B (Newton): show x lies strictly inside the Newton window I,
+                 then apply IH and lift membership back to the top-level call. *)
+              have pos_in_I: "fst I < x \<and> x < snd I"
+              proof -
+                \<comment> \<open>1. Setup local context\<close>
+                define w where "w = b - a"
+                have "w > 0" using ab w_def by simp
 
-              \<comment> \<open>3. Geometric properties from try_newton lemma\<close>
-              have I_props: "fst I \<ge> a \<and> snd I \<le> b \<and> snd I - fst I = w / of_nat N"
-                using try_newton_SomeD[OF TN ab \<open>N > 0\<close>] w_def by simp
-                
-              have split_props: "fst I < snd I"
-                using I_props \<open>N > 0\<close> \<open>w > 0\<close> 
-                by (metis diff_gt_0_iff_gt of_nat_0_less_iff zero_less_divide_iff)
-              have v_I: "Bernstein_changes p (fst I) (snd I) P = ?v"
-                using TN unfolding try_newton_def Let_def 
-                by (auto split: option.split_asm if_split_asm)
+                \<comment> \<open>2. Derive N > 0 by contradiction\<close>
+                have "N > 0"
+                proof (rule ccontr)
+                  assume "\<not> N > 0"
+                  hence "N = 0" by simp
 
-              \<comment> \<open>4. Apply Splitting Logic\<close>
-              
-              \<comment> \<open>Check Left Gap: x cannot be < fst I\<close>
-              have not_left: "\<not> (x < fst I)"
-              proof
-                assume "x < fst I"
-                hence "a < x" "x < fst I" using ax by simp_all
-                hence "Bernstein_changes p a (fst I) P \<ge> 1"
-                  using Bernstein_changes_pos_of_root[OF deg' P0' _ root]
-                  by (smt (verit, ccfv_threshold) Bernstein_changes_def int_nat_eq)
-                  
-                have "Bernstein_changes p a b P \<ge> 
-                      Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P"
-                  using Bernstein_changes_split[OF _ _ deg'] I_props `a < x` `x < fst I` split_props by simp
-                  
-                moreover have "Bernstein_changes p (fst I) b P \<ge> Bernstein_changes p (fst I) (snd I) P"
-                  using Bernstein_changes_split[OF split_props _ deg'] I_props 
-                  by (smt (verit) Bernstein_changes_def int_nat_eq)
-                  
-                ultimately have "?v \<ge> 1 + ?v"
-                  using v_I \<open>1 \<le> Bernstein_changes p a (fst I) P\<close> by linarith
-                thus False by simp
-              qed
+                  \<comment> \<open>If N=0, snap_window produces point intervals (width 0)\<close>
+                  \<comment> \<open>Bernstein_changes on a point is 0\<close>
+                  \<comment> \<open>Since v >= 2, the check 'v1 = v' or 'v2 = v' will fail\<close>
 
-              \<comment> \<open>Check Right Gap: x cannot be > snd I\<close>
-              have not_right: "\<not> (x > snd I)"
-              proof
-                assume "x > snd I"
-                hence "snd I < x" "x < b" using xb by simp_all
-                hence "Bernstein_changes p (snd I) b P \<ge> 1"
-                  using Bernstein_changes_pos_of_root[OF deg' P0' _ root]
-                  by (metis Bernstein_changes_def I_props add_0 dual_order.order_iff_strict
-                      int_one_le_iff_zero_less not_less_iff_gr_or_eq zle_iff_zadd)
-                  
-                have "Bernstein_changes p a b P \<ge> 
-                      Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P"
-                  using Bernstein_changes_split[OF _ _ deg'] I_props `snd I < x` `x < b` split_props by simp
-                  
-               have "Bernstein_changes p a (snd I) P \<ge> Bernstein_changes p (fst I) (snd I) P"
-                  using Bernstein_changes_split[OF _ split_props deg'] I_props split_props
-                  by (smt (verit, ccfv_SIG) Bernstein_changes_def int_nat_eq)
-                  
-                have "?v \<ge> ?v + 1"
-                  using v_I 
-                  using \<open>1 \<le> Bernstein_changes p (snd I) b P\<close>
-                    \<open>Bernstein_changes p (fst I) (snd I) P \<le> Bernstein_changes p a (snd I) P\<close>
-                    \<open>Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P \<le> Bernstein_changes p a b P\<close>
-                  by linarith
-                thus False by simp
-              qed
+                  \<comment> \<open>Unfold definitions to show try_newton returns None\<close>
+                  have "try_newton p a b N P ?v = None"
+                    unfolding try_newton_def Let_def snap_window_def
+                    using \<open>N=0\<close> v_ge2 Bernstein_changes_point
+                    by (auto split: option.split)
 
-              \<comment> \<open>Check Left Boundary: x cannot be fst I\<close>
-              have "x \<noteq> fst I"
-              proof
-                assume "x = fst I"
-                then have "poly P (fst I) = 0" using root by simp
-                
-                \<comment> \<open>Use Strong Splitting\<close>
-                have "Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P + 1 
-                      \<le> Bernstein_changes p a b P"
-                  using Bernstein_changes_split_root 
-                  using \<open>x = fst I\<close> ax deg' root xb  using P0' by blast
-                  \<comment> \<open>Note: If a = fst I, then x = a, contradiction with ax. So a < fst I holds.\<close>
-                  
-                moreover have "Bernstein_changes p (fst I) b P \<ge> ?v"
-                proof -
-                   have "Bernstein_changes p (fst I) b P = 
-                         Bernstein_changes p (fst I) (snd I) P + Bernstein_changes p (snd I) b P"
-                     using Bernstein_changes_split[OF split_props _ deg'] I_props 
-                     by (smt (verit, ccfv_SIG) Bernstein_changes_def calculation of_nat_0_le_iff
-                         v_I)
-                   show ?thesis using Bernstein_changes_split[OF split_props _ deg'] I_props v_I 
-                     by (metis Bernstein_changes_def
-                         \<open>Bernstein_changes p (fst I) b P = Bernstein_changes p (fst I) (snd I) P + Bernstein_changes p (snd I) b P\<close>
-                         zle_iff_zadd)
+                  thus False using TN by simp
                 qed
-                
-                ultimately have "0 + ?v + 1 \<le> ?v" 
-                  using Bernstein_changes_split[OF _ _ deg'] I_props 
-                  by (smt (verit, ccfv_threshold) Bernstein_changes_def of_nat_0_le_iff)
-                thus False by simp
-              qed
 
-              \<comment> \<open>Check Right Boundary: x cannot be snd I\<close>
-              have "x \<noteq> snd I"
-              proof
-                assume "x = snd I"
-                then have "poly P (snd I) = 0" using root by simp
-                
-                have "Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P + 1 
-                      \<le> Bernstein_changes p a b P"
-                  using Bernstein_changes_split_root
-                  using \<open>x = snd I\<close> ax deg' xb
-                  using \<open>poly P (snd I) = 0\<close> using P0' by blast
-                  
-                moreover have "Bernstein_changes p a (snd I) P \<ge> ?v"
-                  using Bernstein_changes_split[OF _ split_props deg'] I_props v_I
-                  by (metis Bernstein_changes_def \<open>x = snd I\<close> add.commute
-                      dual_order.order_iff_strict dual_order.trans zle_iff_zadd)
-                  
-                ultimately have "?v + 0 + 1 \<le> ?v" 
-                by (smt (verit, ccfv_SIG) Bernstein_changes_def int_nat_eq)
-                thus False by simp
-              qed
+                \<comment> \<open>3. Geometric properties from try_newton lemma\<close>
+                have I_props: "fst I \<ge> a \<and> snd I \<le> b \<and> snd I - fst I = w / of_nat N"
+                  using try_newton_SomeD[OF TN ab \<open>N > 0\<close>] w_def by simp
 
-              show "fst I < x \<and> x < snd I"
-                using not_left not_right \<open>x \<noteq> fst I\<close> \<open>x \<noteq> snd I\<close> linorder_less_linear by blast
-            qed
+                have split_props: "fst I < snd I"
+                  using I_props \<open>N > 0\<close> \<open>w > 0\<close>
+                  by (metis diff_gt_0_iff_gt of_nat_0_less_iff zero_less_divide_iff)
+                have v_I: "Bernstein_changes p (fst I) (snd I) P = ?v"
+                  using TN unfolding try_newton_def Let_def
+                  by (auto split: option.split_asm if_split_asm)
+
+                \<comment> \<open>4. Apply Splitting Logic\<close>
+
+                \<comment> \<open>Check Left Gap: x cannot be < fst I\<close>
+                have not_left: "\<not> (x < fst I)"
+                proof
+                  assume "x < fst I"
+                  hence "a < x" "x < fst I" using ax by simp_all
+                  hence "Bernstein_changes p a (fst I) P \<ge> 1"
+                    using Bernstein_changes_pos_of_root[OF deg' P0' _ root]
+                    by (smt (verit, ccfv_threshold) Bernstein_changes_def int_nat_eq)
+
+                  have "Bernstein_changes p a b P \<ge>
+                        Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P"
+                    using Bernstein_changes_split[OF _ _ deg'] I_props `a < x` `x < fst I` split_props by simp
+
+                  moreover have "Bernstein_changes p (fst I) b P \<ge> Bernstein_changes p (fst I) (snd I) P"
+                    using Bernstein_changes_split[OF split_props _ deg'] I_props
+                    by (smt (verit) Bernstein_changes_def int_nat_eq)
+
+                  ultimately have "?v \<ge> 1 + ?v"
+                    using v_I \<open>1 \<le> Bernstein_changes p a (fst I) P\<close> by linarith
+                  thus False by simp
+                qed
+
+                \<comment> \<open>Check Right Gap: x cannot be > snd I\<close>
+                have not_right: "\<not> (x > snd I)"
+                proof
+                  assume "x > snd I"
+                  hence "snd I < x" "x < b" using xb by simp_all
+                  hence "Bernstein_changes p (snd I) b P \<ge> 1"
+                    using Bernstein_changes_pos_of_root[OF deg' P0' _ root]
+                    by (metis Bernstein_changes_def I_props add_0 dual_order.order_iff_strict
+                        int_one_le_iff_zero_less not_less_iff_gr_or_eq zle_iff_zadd)
+
+                  have "Bernstein_changes p a b P \<ge>
+                        Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P"
+                    using Bernstein_changes_split[OF _ _ deg'] I_props `snd I < x` `x < b` split_props by simp
+
+                  have "Bernstein_changes p a (snd I) P \<ge> Bernstein_changes p (fst I) (snd I) P"
+                    using Bernstein_changes_split[OF _ split_props deg'] I_props split_props
+                    by (smt (verit, ccfv_SIG) Bernstein_changes_def int_nat_eq)
+
+                  have "?v \<ge> ?v + 1"
+                    using v_I
+                    using \<open>1 \<le> Bernstein_changes p (snd I) b P\<close>
+                      \<open>Bernstein_changes p (fst I) (snd I) P \<le> Bernstein_changes p a (snd I) P\<close>
+                      \<open>Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P \<le> Bernstein_changes p a b P\<close>
+                    by linarith
+                  thus False by simp
+                qed
+
+                \<comment> \<open>Check Left Boundary: x cannot be fst I\<close>
+                have "x \<noteq> fst I"
+                proof
+                  assume "x = fst I"
+                  then have "poly P (fst I) = 0" using root by simp
+
+                  \<comment> \<open>Use Strong Splitting\<close>
+                  have "Bernstein_changes p a (fst I) P + Bernstein_changes p (fst I) b P + 1
+                        \<le> Bernstein_changes p a b P"
+                    using Bernstein_changes_split_root
+                    using \<open>x = fst I\<close> ax deg' root xb  using P0' by blast
+                    \<comment> \<open>Note: If a = fst I, then x = a, contradiction with ax. So a < fst I holds.\<close>
+
+                  moreover have "Bernstein_changes p (fst I) b P \<ge> ?v"
+                  proof -
+                    have "Bernstein_changes p (fst I) b P =
+                          Bernstein_changes p (fst I) (snd I) P + Bernstein_changes p (snd I) b P"
+                      using Bernstein_changes_split[OF split_props _ deg'] I_props
+                      by (smt (verit, ccfv_SIG) Bernstein_changes_def calculation of_nat_0_le_iff
+                          v_I)
+                    show ?thesis using Bernstein_changes_split[OF split_props _ deg'] I_props v_I
+                      by (metis Bernstein_changes_def
+                          \<open>Bernstein_changes p (fst I) b P = Bernstein_changes p (fst I) (snd I) P + Bernstein_changes p (snd I) b P\<close>
+                          zle_iff_zadd)
+                  qed
+
+                  ultimately have "0 + ?v + 1 \<le> ?v"
+                    using Bernstein_changes_split[OF _ _ deg'] I_props
+                    by (smt (verit, ccfv_threshold) Bernstein_changes_def of_nat_0_le_iff)
+                  thus False by simp
+                qed
+
+                \<comment> \<open>Check Right Boundary: x cannot be snd I\<close>
+                have "x \<noteq> snd I"
+                proof
+                  assume "x = snd I"
+                  then have "poly P (snd I) = 0" using root by simp
+
+                  have "Bernstein_changes p a (snd I) P + Bernstein_changes p (snd I) b P + 1
+                        \<le> Bernstein_changes p a b P"
+                    using Bernstein_changes_split_root
+                    using \<open>x = snd I\<close> ax deg' xb
+                    using \<open>poly P (snd I) = 0\<close> using P0' by blast
+
+                  moreover have "Bernstein_changes p a (snd I) P \<ge> ?v"
+                    using Bernstein_changes_split[OF _ split_props deg'] I_props v_I
+                    by (metis Bernstein_changes_def \<open>x = snd I\<close> add.commute
+                        dual_order.order_iff_strict dual_order.trans zle_iff_zadd)
+
+                  ultimately have "?v + 0 + 1 \<le> ?v"
+                    by (smt (verit, ccfv_SIG) Bernstein_changes_def int_nat_eq)
+                  thus False by simp
+                qed
+
+                show "fst I < x \<and> x < snd I"
+                  using not_left not_right \<open>x \<noteq> fst I\<close> \<open>x \<noteq> snd I\<close> linorder_less_linear by blast
+              qed
               then have fstI_lt: "fst I < x" and x_lt_sndI: "x < snd I"
                 by auto
 
@@ -1118,6 +1114,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
                             and J_cov: "fst J \<le> x \<and> x \<le> snd J"
                 by blast
 
+              (* Lift: in the Newton branch, newdsc returns exactly the recursive call on (fst I, snd I). *)
               have J_in_top: "J \<in> set (newdsc p a b N P)"
               proof -
                 have "newdsc p a b N P =
@@ -1144,6 +1141,8 @@ proof (induction p a b N P rule: newdsc.pinduct)
                 using J_in_top J_cov by blast
             next
               case TN_None: None
+              (* Branch C (fallback): split at midpoint m.
+                 Either IH covers x on the left, or IH covers x on the right, or x = m (mid-root singleton). *)
               define m where "m = (a + b) / 2"
               define N' where "N' = Nlin N"
 
@@ -1160,6 +1159,8 @@ proof (induction p a b N P rule: newdsc.pinduct)
                 then obtain I where I_in: "I \<in> set (newdsc p a m N' P)"
                                  and I_cov: "fst I \<le> x \<and> x \<le> snd I"
                   by blast
+
+                (* Lift: in fallback, newdsc returns mid_root @ left_call @ right_call. *)
                 have mem_top:
                   "I \<in> set (newdsc p a b N P)"
                 proof -
@@ -1187,6 +1188,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
                     using I_in
                     by (simp add: m_def N'_def Let_def)
                 qed
+
                 show ?thesis
                   using mem_top I_cov by blast
               next
@@ -1199,6 +1201,8 @@ proof (induction p a b N P rule: newdsc.pinduct)
                   then obtain I where I_in: "I \<in> set (newdsc p m b N' P)"
                                    and I_cov: "fst I \<le> x \<and> x \<le> snd I"
                     by blast
+
+                  (* Lift: in fallback, newdsc returns mid_root @ left_call @ right_call. *)
                   have mem_top:
                     "I \<in> set (newdsc p a b N P)"
                   proof -
@@ -1226,13 +1230,13 @@ proof (induction p a b N P rule: newdsc.pinduct)
                       using I_in
                       by (simp add: m_def N'_def Let_def)
                   qed
+
                   show ?thesis
                     using mem_top I_cov by blast
                 next
                   assume mid: "x = m"
                   then have mid_root: "poly P m = 0"
-                    using root m_def
-                    by blast
+                    using root m_def by blast
 
                   have mid_ok:
                     "\<exists>I\<in>set (if poly P m = 0 then [(m,m)] else []). fst I \<le> x \<and> x \<le> snd I"
@@ -1249,6 +1253,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
                     and I_mid_cov: "fst I \<le> x \<and> x \<le> snd I"
                     by blast
 
+                  (* Lift: in fallback, mid_root is the first component of the returned concatenation. *)
                   have mem_top:
                     "I \<in> set (newdsc p a b N P)"
                   proof -
@@ -1276,6 +1281,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
                       using I_mid_in
                       by (simp add: m_def N'_def Let_def)
                   qed
+
                   show ?thesis
                     using mem_top I_mid_cov by blast
                 qed
@@ -1285,11 +1291,11 @@ proof (induction p a b N P rule: newdsc.pinduct)
         qed
       qed
     qed
+    (* Conclude: H is exactly the required statement for the current case. *)
     show ?thesis
       using "1.prems"(1,2,3) H by blast
   qed
 qed
-
 
 
 end

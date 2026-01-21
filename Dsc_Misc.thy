@@ -12,11 +12,11 @@ lemma Poly_eq_foldr_pCons:
   shows "Poly xs = foldr pCons xs (0::'a poly)"
   by (induction xs) simp_all
 
+(* Code equation for reciprocal_poly (keeps executable code in sync with the definition). *)
 lemma reciprocal_poly_code [code]:
   "reciprocal_poly pa (p :: 'a::zero poly) =
      foldr pCons (rev (coeffs p @ replicate (pa - degree p) 0)) 0"
-  by (simp add: Poly_eq_foldr_pCons
-      reciprocal_poly_def)
+  by (simp add: Poly_eq_foldr_pCons reciprocal_poly_def)
 
 value "Bernstein_changes 3 (-2) 2 [:-1,0,0,1:]"
 
@@ -192,7 +192,7 @@ definition root_sep :: "complex poly \<Rightarrow> real" where
       else 1)"
 
 lemma root_sep_pos:
-  assumes "P \<noteq> (0 :: complex poly)"
+  assumes P_nonzero: "P \<noteq> (0 :: complex poly)"
   shows   "root_sep P > 0"
 proof (cases "card (proots P) \<ge> 2")
   case False
@@ -200,23 +200,29 @@ proof (cases "card (proots P) \<ge> 2")
     by (simp add: root_sep_def)
 next
   case True
-  have fin: "finite (proots_dist_set P)"
-    using assms finite_proots_dist_set by blast
-  have ne: "proots_dist_set P \<noteq> {}"
-    using assms True proots_dist_set_nonempty by blast
+  have dist_set_finite: "finite (proots_dist_set P)"
+    using P_nonzero finite_proots_dist_set by blast
+  have dist_set_nonempty: "proots_dist_set P \<noteq> {}"
+    using P_nonzero True proots_dist_set_nonempty by blast
 
-  have "Min (proots_dist_set P) \<in> proots_dist_set P"
-    using fin ne by (rule Min_in)
+  have Min_in_set: "Min (proots_dist_set P) \<in> proots_dist_set P"
+    using dist_set_finite dist_set_nonempty by (rule Min_in)
+
   then obtain z1 z2 where
-    "Min (proots_dist_set P) = dist z1 z2"
-    "z1 \<in> proots P" "z2 \<in> proots P" "z1 \<noteq> z2"
-    unfolding proots_dist_set_def by blast
-  hence "Min (proots_dist_set P) > 0"
-    by (simp) 
+    Min_eq: "Min (proots_dist_set P) = dist z1 z2"
+    and z1_root: "z1 \<in> proots P"
+    and z2_root: "z2 \<in> proots P"
+    and z1_neq_z2: "z1 \<noteq> z2"
+    unfolding proots_dist_set_def
+    by blast
+
+  have Min_pos: "Min (proots_dist_set P) > 0"
+    using Min_eq z1_neq_z2 by simp
 
   with True show ?thesis
     by (simp add: root_sep_def)
 qed
+
 
 lemma dist_two_roots_ge_root_sep:
   assumes "P \<noteq> (0 :: complex poly)"
@@ -854,8 +860,6 @@ proof -
     by arith
 qed
 
-find_theorems Bernstein_changes
-
 lemma Bernstein_changes_pos_of_root:
   assumes deg: "degree P \<le> p"
       and P0:  "P \<noteq> 0"
@@ -881,6 +885,69 @@ proof -
 
   from roots_ge1 le show ?thesis by linarith
 qed
+
+lemma Bernstein_changes_point: "Bernstein_changes p a a P = 0"
+proof -
+  \<comment> \<open>1. Simplify the polynomial composition for interval [a, a]\<close>
+  let ?Q = "P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, a - a:]"
+  have "[:0, a - a:] = 0" by simp
+  hence "?Q = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p 0" by simp
+  also have "\<dots> = [:poly P a:]" 
+  by (simp add: pcompose_0')
+  finally have Q_val: "?Q = [:poly P a:]" .
+
+  \<comment> \<open>2. Analyze the Bernstein coefficients\<close>
+  \<comment> \<open>Bernstein_coeffs is defined as a list of specific coefficients of the transformed poly\<close>
+  have "Bernstein_coeffs p a a P = replicate (p+1) (poly P a)"
+  proof (rule nth_equalityI)
+    show "length (Bernstein_coeffs p a a P) = length (replicate (p + 1) (poly P a))"
+      unfolding Bernstein_coeffs_def by simp
+  next
+    fix i assume "i < length (Bernstein_coeffs p a a P)"
+    hence i_bounds: "i \<le> p" unfolding Bernstein_coeffs_def by simp
+    
+    \<comment> \<open>Calculate the term at index i\<close>
+    let ?R = "reciprocal_poly p ?Q \<circ>\<^sub>p [:1, 1:]"
+    
+    have "reciprocal_poly p ?Q = monom (poly P a) p"
+      using Q_val unfolding reciprocal_poly_def 
+      by (cases "poly P a = 0") (auto simp: monom_altdef Poly_append)
+    
+    hence R_eq: "?R = smult (poly P a) ([:1, 1:] ^ p)"
+    by (simp add: monom_altdef pcompose_hom.hom_power pcompose_pCons pcompose_smult)
+      
+    have "coeff ?R (p-i) = poly P a * real (p choose (p-i))"
+      using R_eq unfolding poly_binomial 
+      by (metis (mono_tags, lifting) R_eq coeff_linear_poly_power coeff_smult diff_le_self
+          mult.right_neutral power_one)
+         
+    have "inverse (real (p choose i)) * coeff ?R (p-i) = poly P a"
+      using \<open>coeff ?R (p-i) = ...\<close> binomial_symmetric[OF i_bounds]
+      by (simp add: field_simps)
+      
+    thus "Bernstein_coeffs p a a P ! i = replicate (p + 1) (poly P a) ! i"
+      unfolding Bernstein_coeffs_def using i_bounds
+      by (metis (no_types, lifting) Bernstein_coeffs_def \<open>i < length (Bernstein_coeffs p a a P)\<close>
+          add_0 diff_zero length_map length_upt nth_map_upt nth_replicate)
+  qed
+
+  \<comment> \<open>3. Changes of a constant list is 0\<close>
+  have "changes (replicate (p+1) (poly P a)) = 0"
+  proof (induction p)
+    case 0 then show ?case by simp
+  next
+    case (Suc n)
+    have "replicate (Suc n + 1) (poly P a) = poly P a # replicate (n + 1) (poly P a)"
+      by simp
+    then show ?case 
+      using Suc.IH changes.simps 
+      by (cases "poly P a = 0") (auto simp: mult_less_0_iff)
+  qed
+  
+  thus ?thesis unfolding Bernstein_changes_def 
+    by (simp add: \<open>Bernstein_coeffs p a a P = replicate (p+1) (poly P a)\<close>)
+qed
+
 
 definition dsc_pair_ok :: "real poly \<Rightarrow> (real \<times> real) \<Rightarrow> bool" where
   "dsc_pair_ok P I \<longleftrightarrow>

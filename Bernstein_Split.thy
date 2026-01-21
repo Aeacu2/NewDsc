@@ -667,7 +667,7 @@ proof -
   \<comment> \<open>3. Express the polynomial on [a,b] rescaled to [0,1]\<close>
   define Q where "Q = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, b - a:]"
   have degQ: "degree Q \<le> p" 
-    using deg Q_def by (simp add: degree_pcompose)
+    using deg Q_def by (simp)
 
   \<comment> \<open>4. Use the rescaling lemma to relate general Bernstein changes to [0,1]\<close>
   have term_total: "Bernstein_changes p a b P = Bernstein_changes_01 p Q"

@@ -1,8 +1,9 @@
 theory Dsc
   imports
     Dsc_Misc
-
+    Radical
 begin
+
 
 function (sequential, domintros) dsc :: "nat \<Rightarrow> real \<Rightarrow> real \<Rightarrow> real poly \<Rightarrow> (real \<times> real) list"
 where
@@ -22,20 +23,22 @@ where
 lemma dsc_domI_general:
   fixes \<delta> :: real and p :: nat and P :: "real poly"
   assumes \<delta>_pos: "\<delta> > 0"
-      and small: "\<And>a b. a < b \<Longrightarrow> b - a \<le> \<delta> \<Longrightarrow> Bernstein_changes p a b P \<le> 1"
-  shows "\<And>a b. a < b \<Longrightarrow> dsc_dom (p,a,b,P)"
+    and small: "\<And>a b. a < b \<Longrightarrow> b - a \<le> \<delta> \<Longrightarrow> Bernstein_changes p a b P \<le> 1"
+  shows "\<And>a b. a < b \<Longrightarrow> dsc_dom (p, a, b, P)"
 proof -
-  define \<mu> where "\<mu> = (\<lambda> a b. mu \<delta> a b)"
-  let ?Prop = "\<lambda>n::nat. \<forall>a b. \<mu> a b < n \<longrightarrow> a < b \<longrightarrow> dsc_dom (p,a,b,P)"
+  define \<mu> where "\<mu> = (\<lambda>a b. mu \<delta> a b)"
+  let ?Prop = "\<lambda>n::nat. \<forall>a b. \<mu> a b < n \<longrightarrow> a < b \<longrightarrow> dsc_dom (p, a, b, P)"
 
   have step: "\<And>n. (\<And>m. m < n \<Longrightarrow> ?Prop m) \<Longrightarrow> ?Prop n"
   proof -
-    fix n assume IH: "\<And>m. m < n \<Longrightarrow> ?Prop m"
+    fix n
+    assume IH: "\<And>m. m < n \<Longrightarrow> ?Prop m"
     show "?Prop n"
     proof (intro allI impI)
       fix a b :: real
-      assume abn: "\<mu> a b < n" and ab: "a < b"
-      show "dsc_dom (p,a,b,P)"
+      assume mu_lt_n: "\<mu> a b < n"
+        and ab: "a < b"
+      show "dsc_dom (p, a, b, P)"
       proof (cases "a \<ge> b \<or> P = 0")
         case True
         then show ?thesis by (auto intro: dsc.domintros)
@@ -45,55 +48,67 @@ proof -
         show ?thesis
         proof (cases "?v = 0 \<or> ?v = 1")
           case True
-          then show ?thesis using False by (auto intro: dsc.domintros)
+          then show ?thesis
+            using False
+            by (auto intro: dsc.domintros)
         next
           case False
-          have v_ge2: "2 \<le> ?v" using False Bernstein_changes_def by fastforce
-          have \<delta>lt: "\<delta> < b - a"
+          have v_ge2: "2 \<le> ?v"
+            using False Bernstein_changes_def
+            by fastforce
+
+          have \<delta>_lt_width: "\<delta> < b - a"
           proof (rule ccontr)
             assume "\<not> \<delta> < b - a"
-            then have "b - a \<le> \<delta>" by linarith
-            then have "Bernstein_changes p a b P \<le> 1" using ab small by presburger
-            with v_ge2 show False by linarith
+            then have width_le_\<delta>: "b - a \<le> \<delta>"
+              by linarith
+            then have v_le1: "Bernstein_changes p a b P \<le> 1"
+              using ab small
+              by presburger
+            from v_ge2 v_le1 show False
+              by linarith
           qed
+
           define m where "m = (a + b) / 2"
-          have lessL: "\<mu> a m < \<mu> a b"
-            by (simp add: \<delta>_pos \<delta>lt \<open>\<mu> \<equiv> mu \<delta>\<close> ab m_def
-                mu_halve_strict(1))
-          have lessR: "\<mu> m b < \<mu> a b" 
-            by (simp add: \<delta>_pos \<delta>lt \<open>\<mu> \<equiv> mu \<delta>\<close> ab m_def
-                mu_halve_strict(2))
-          have am: "a < m" and mb: "m < b" using ab by (simp_all add: m_def)
-          have IH_at: "?Prop (\<mu> a b)"
-            using IH abn by simp
-          have IH_L: "dsc_dom (p,a,m,P)"
-            using IH_at lessL am by blast
-          have IH_R: "dsc_dom (p,m,b,P)"
-            using IH_at lessR mb by blast
+          have am: "a < m"
+            and mb: "m < b"
+            using ab
+            by (simp_all add: m_def)
+
+          have mu_left_strict: "\<mu> a m < \<mu> a b"
+            by (simp add: \<mu>_def \<delta>_pos \<delta>_lt_width ab m_def mu_halve_strict(1))
+
+          have mu_right_strict: "\<mu> m b < \<mu> a b"
+            by (simp add: \<mu>_def \<delta>_pos \<delta>_lt_width ab m_def mu_halve_strict(2))
+
+          have IH_at_mu: "?Prop (\<mu> a b)"
+            using IH mu_lt_n
+            by simp
+
+          have dom_left: "dsc_dom (p, a, m, P)"
+            using IH_at_mu mu_left_strict am
+            by blast
+
+          have dom_right: "dsc_dom (p, m, b, P)"
+            using IH_at_mu mu_right_strict mb
+            by blast
+
           show ?thesis
-            using dsc.domintros[of p a b P] False False IH_L IH_R using m_def by blast 
+            using False dom_left dom_right
+            by (auto intro: dsc.domintros simp: m_def)
         qed
       qed
     qed
   qed
-   have "\<And>n. ?Prop n" by (rule less_induct, rule step)
-  then show "\<And>a b. a < b \<Longrightarrow> dsc_dom (p,a,b,P)"
-  proof
-    fix a b :: real
-    assume ab: "a < b"
-    have H: "?Prop (Suc (\<mu> a b))" by (rule \<open>\<And>n. ?Prop n\<close>)
-    from H have H1:
-      "\<forall>b. \<mu> a b < Suc (\<mu> a b) \<longrightarrow> a < b \<longrightarrow> dsc_dom (p,a,b,P)"
-    using
-      \<open>\<And>n. \<forall>a b. \<mu> a b < n \<longrightarrow> a < b \<longrightarrow> dsc_dom (p, a, b, P)\<close>
-    by auto
-    from H1 have H2:
-      "\<mu> a b < Suc (\<mu> a b) \<longrightarrow> a < b \<longrightarrow> dsc_dom (p,a,b,P)"
-      by (rule spec[of _ b])
-    from H2 show "dsc_dom (p,a,b,P)"
-      by (simp add: ab)
-  qed
+
+  have all_Prop: "\<And>n. ?Prop n"
+    by (rule less_induct, rule step)
+
+  show "\<And>a b. a < b \<Longrightarrow> dsc_dom (p, a, b, P)"
+    using all_Prop by blast
 qed
+
+
 
 lemma dsc_terminates_squarefree_real:
   fixes P :: "real poly"
@@ -284,6 +299,34 @@ proof (induction p a b P rule: dsc.pinduct)
   qed
 qed
 
+thm dsc.psimps
+
+lemma dsc_psimps_if_squarefree_real:
+  fixes P :: "real poly"
+  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
+  assumes P0: "P \<noteq> 0"
+      and deg: "degree P \<le> p"
+      and p0:  "p \<noteq> 0"
+      and rsf: "rsquarefree Q"
+      and ab:  "a < b"
+  shows
+    "dsc p a b P =
+      (if b \<le> a \<or> P = 0 then []
+       else let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ dsc p a m P @ dsc p m b P)"
+proof -
+  have dom: "dsc_dom (p, a, b, P)"
+    using dsc_terminates_squarefree_real ab P0 Q_def deg p0 rsf by blast
+  show ?thesis
+    using dsc.psimps[OF dom]
+    by simp
+qed
+
+
 
 lemma dsc_complete:
   assumes dom: "dsc_dom (p,a,b,P)"
@@ -294,7 +337,6 @@ lemma dsc_complete:
 using dom deg P0
 proof (induction p a b P rule: dsc.pinduct)
   case (1 p a b P)
-  find_theorems intro
   have dsc_eq:
     "dsc p a b P =
        (if a \<ge> b \<or> P = 0 then []
@@ -462,5 +504,123 @@ proof (induction p a b P rule: dsc.pinduct)
 
   qed
 qed
+
+
+definition wrap :: "real \<Rightarrow> real \<Rightarrow> rat poly \<Rightarrow> (real \<times> real) list"
+where
+  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then dsc p a b P 
+        else [])))"
+
+lemma wrap_eq_dsc: 
+
+lemma dsc_psimps_if:
+  fixes P :: "real poly"
+  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
+  assumes P0: "P \<noteq> 0"
+      and deg: "degree P \<le> p"
+      and p0:  "p \<noteq> 0"
+      and rsf: "rsquarefree Q"
+      and ab:  "a < b"
+  shows
+    "dsc p a b P =
+      (let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ dsc p a m P @ dsc p m b P)"
+proof -
+  have dom: "dsc_dom (p, a, b, P)"
+    using dsc_terminates_squarefree_real ab P0 Q_def deg p0 rsf by blast
+  show ?thesis
+    using dsc.psimps[OF dom]
+    using P0 ab by argo
+qed
+
+lemma dsc_psimps_if_radical:
+  fixes R :: "rat poly"
+  defines "P \<equiv> (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R))"
+  assumes P0: "P \<noteq> 0"
+      and deg: "degree P \<le> p"
+      and p0:  "p \<noteq> 0"
+      and ab:  "a < b"
+  shows
+    "dsc p a b P =
+      (let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ dsc p a m P @ dsc p m b P)"
+proof -
+  have R0: "R \<noteq> 0"
+  proof
+    assume "R = 0"
+    then have "P = 0"
+      by (simp add: P_def radical_rat_poly_def)
+    with P0 show False by simp
+  qed
+
+  have sf_rad: "square_free (radical_rat_poly R)"
+    using radical_rat_poly_square_free[OF R0] .
+
+  have sfP: "square_free P"
+    unfolding P_def
+    using square_free_liftR[OF sf_rad] .
+
+  show ?thesis
+  proof (rule dsc_psimps_if[of P])
+    show "P \<noteq> 0" using P0 .
+    show "degree P \<le> p" using deg .
+    show "p \<noteq> 0" using p0 .
+    show "rsquarefree (map_poly complex_of_real P)"
+      using rsquarefree_lift[OF sfP] .
+    show "a < b" using ab .
+  qed
+qed
+
+lemma wrap_eq_dsc:
+  fixes a b :: real and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:  "P \<noteq> 0"
+      and deg0:"degree P \<noteq> 0"
+      and ab:  "a < b"
+  shows "wrap a b R = dsc (degree P) a b P"
+    using P0 deg0 ab
+    by (simp add: wrap_def P_def)
+
+
+
+declare [[code drop: wrap]]
+
+lemma wrap_simp:  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then (let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ dsc p a m P @ dsc p m b P)
+        else [])))"
+  by (smt (verit, ccfv_SIG) dsc_psimps_if_radical wrap_def)
+
+lemma wrap_code[code]:  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then (let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ wrap a m R @ wrap m b R)
+        else [])))"
+  by (smt (verit) dsc.domintros dsc.psimps wrap_eq_dsc wrap_simp)
+
+
+value "wrap (-2) 2 [:-1,0,0,1:] "
 
 end
