@@ -106,7 +106,6 @@ lemma rsquarefree_lift:
   shows "rsquarefree(map_poly (of_real :: real \<Rightarrow> complex) p)"
   by (simp add: assms square_free_liftC square_free_rsquarefree)
 
-
 lemma of_rat_sum_atMost:
   fixes g :: "nat \<Rightarrow> rat"
   shows "of_rat (\<Sum>i\<le>n. g i) = (\<Sum>i\<le>n. (of_rat (g i) :: real))"

@@ -3,6 +3,7 @@ theory NewDsc
     Dsc_Misc
     Bernstein_Split
     "Real_Impl.Real_Impl"
+    Radical
 begin
 
 subsection \<open>Parameters for quadratic / linear steps\<close>
@@ -231,26 +232,24 @@ proof -
       w_def by blast
 qed
 
-function (sequential, domintros) newdsc ::
+function (domintros) newdsc ::
   "nat \<Rightarrow> real \<Rightarrow> real \<Rightarrow> nat \<Rightarrow> real poly \<Rightarrow> (real \<times> real) list"
 where
   "newdsc p a b N P =
-     (if a \<ge> b \<or> P = 0 then []
+     (let v = Bernstein_changes p a b P in
+      if v = 0 then []
+      else if v = 1 then [(a, b)]
       else
-        (let v = Bernstein_changes p a b P in
-         if v = 0 then []
-         else if v = 1 then [(a, b)]
-         else
-           (case try_blocks p a b N P v of
-              Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-            | None \<Rightarrow>
-               (case try_newton p a b N P v of
-                  Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-                | None \<Rightarrow>
-                    (let m  = (a + b) / 2;
-                         N' = Nlin N;
-                         mid_root = (if poly P m = 0 then [(m, m)] else [])
-                     in mid_root @ newdsc p a m N' P @ newdsc p m b N' P)))))"
+        (case try_blocks p a b N P v of
+           Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+         | None \<Rightarrow>
+             (case try_newton p a b N P v of
+                Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+              | None \<Rightarrow>
+                  (let m  = (a + b) / 2;
+                       N' = Nlin N;
+                       mid_root = (if poly P m = 0 then [(m, m)] else [])
+                   in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))"
   by pat_completeness auto
 
 lemma newdsc_domI_general:
@@ -274,19 +273,12 @@ proof -
         and ab: "a < b"
         and N2: "N \<ge> 2"
       show "newdsc_dom (p, a, b, N, P)"
-      proof (cases "a \<ge> b \<or> P = 0")
-        case True
-        then show ?thesis
-          by (auto intro: newdsc.domintros)
-
-      next
-        case False
+      proof -
         let ?v = "Bernstein_changes p a b P"
         show ?thesis
         proof (cases "?v = 0 \<or> ?v = 1")
           case True
           then show ?thesis
-            using False
             by (auto intro: newdsc.domintros)
 
         next
@@ -461,44 +453,37 @@ lemma newdsc_correct:
   assumes dom: "newdsc_dom (p, a, b, N, P)"
       and deg: "degree P \<le> p"
       and P0:  "P \<noteq> 0"
+      and ab:  "a < b"
   shows "\<forall>I \<in> set (newdsc p a b N P). dsc_pair_ok P I"
-  using dom deg P0
+  using dom deg P0 ab
 proof (induction p a b N P rule: newdsc.pinduct)
   case (1 p a b N P)
 
   (* Expand one recursive call of newdsc. *)
   have newdsc_eq:
     "newdsc p a b N P =
-       (if a \<ge> b \<or> P = 0 then []
+       (let v = Bernstein_changes p a b P in
+        if v = 0 then []
+        else if v = 1 then [(a, b)]
         else
-          (let v = Bernstein_changes p a b P in
-           if v = 0 then []
-           else if v = 1 then [(a, b)]
-           else
-             (case try_blocks p a b N P v of
-                Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-              | None \<Rightarrow>
-                  (case try_newton p a b N P v of
-                     Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-                   | None \<Rightarrow>
-                       (let m  = (a + b) / 2;
-                            N' = Nlin N;
-                            mid_root = (if poly P m = 0 then [(m, m)] else [])
-                        in mid_root @ newdsc p a m N' P @ newdsc p m b N' P)))))"
+          (case try_blocks p a b N P v of
+             Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+           | None \<Rightarrow>
+               (case try_newton p a b N P v of
+                  Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+                | None \<Rightarrow>
+                    (let m  = (a + b) / 2;
+                         N' = Nlin N;
+                         mid_root = (if poly P m = 0 then [(m, m)] else [])
+                     in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))"
     using "1.hyps" newdsc.psimps
     by blast
 
   show ?case
-  proof (cases "a \<ge> b \<or> P = 0")
-    (* Trivial case: empty interval or zero polynomial. *)
-    case True
-    then show ?thesis
-      by (simp add: newdsc_eq dsc_pair_ok_def)
-  next
-    (* Non-trivial interval with nonzero polynomial. *)
-    case False
-    hence ab: "a < b" and P0': "P \<noteq> 0"
-      by auto
+  proof -
+    from 1 have ab: "a < b" and P0': "P \<noteq> 0"
+      apply blast
+      by (simp add: "1.prems"(2))
     from 1 have deg': "degree P \<le> p"
       by blast
 
@@ -535,16 +520,71 @@ proof (induction p a b N P rule: newdsc.pinduct)
         have IH_block:
           "\<And>I. \<lbrakk>try_blocks p a b N P ?v = Some I\<rbrakk> \<Longrightarrow>
                 \<forall>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). dsc_pair_ok P J"
-          using "1.IH"(4) False deg' v0_ne v_ge2
-          by blast
+        proof -
+          fix I
+          assume TB: "try_blocks p a b N P ?v = Some I"
+
+          have Npos: "N > 0"
+          proof (rule ccontr)
+            assume "\<not> N > 0"
+            hence N0: "N = 0" by simp
+            have "try_blocks p a b N P ?v = None"
+              unfolding try_blocks_def Let_def N0
+              by (simp add: Bernstein_changes_point v0_ne)
+            thus False using TB by simp
+          qed
+
+          have fst_lt_snd: "fst I < snd I"
+          proof -
+            define w where "w = b - a"
+            have wpos: "w > 0" using ab w_def by simp
+            have width_I: "snd I - fst I = w / of_nat N"
+              using try_blocks_SomeD(3)[OF TB Npos ab] w_def by simp
+            have "w / of_nat N > 0" using wpos Npos by simp
+            thus ?thesis using width_I by linarith
+          qed
+
+          show "\<forall>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). dsc_pair_ok P J"
+            using "1.IH"(4) TB deg' P0' fst_lt_snd v0_ne v_ge2
+            by blast
+        qed
 
         (* Subcase B: successful Newton step. *)
         have IH_newton:
           "\<And>I. \<lbrakk>try_blocks p a b N P ?v = None;
                   try_newton p a b N P ?v = Some I\<rbrakk> \<Longrightarrow>
                 \<forall>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). dsc_pair_ok P J"
-          using "1.IH"(3) False deg' v0_ne v_ge2
-          by blast
+        proof -
+          fix I
+          assume TB0: "try_blocks p a b N P ?v = None"
+             and TN : "try_newton p a b N P ?v = Some I"
+
+          have Npos: "N > 0"
+          proof (rule ccontr)
+            assume "\<not> N > 0"
+            hence N0: "N = 0" by simp
+            have "try_newton p a b N P ?v = None"
+              unfolding try_newton_def Let_def N0
+              by (auto split: option.split if_split_asm
+                  simp: newton_at_def snap_window_def Bernstein_changes_point v0_ne)
+            thus False using TN by simp
+          qed
+
+          have fst_lt_snd: "fst I < snd I"
+          proof -
+            define w where "w = b - a"
+            have wpos: "w > 0" using ab w_def by simp
+            have width_I: "snd I - fst I = w / of_nat N"
+              using try_newton_SomeD(3)[OF TN ab Npos] w_def by simp
+            have "w / of_nat N > 0" using wpos Npos by simp
+            thus ?thesis using width_I by linarith
+          qed
+
+          show "\<forall>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). dsc_pair_ok P J"
+            using "1.IH"(3) TB0 TN deg' P0' fst_lt_snd v0_ne v_ge2
+            by blast
+        qed
+
 
         (* Subcase C: both failed \<Rightarrow> linear split. *)
         have IH_LR:
@@ -562,12 +602,12 @@ proof (induction p a b N P rule: newdsc.pinduct)
              and N'_def: "N' = Nlin N"
           have IH_left:
             "\<forall>I\<in>set (newdsc p a m N' P). dsc_pair_ok P I"
-            using "1.IH" False deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2
-            by blast
+            using "1.IH" deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2 P0' ab 
+            by (metis field_less_half_sum)
           have IH_right:
             "\<forall>I\<in>set (newdsc p m b N' P). dsc_pair_ok P I"
-            using "1.IH" False deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2
-            by metis
+            using "1.IH" deg' v0_ne v_ge2' TB0 TN0 m_def N'_def v_ge2 P0' ab 
+            by (metis gt_half_sum one_add_one)
           show "(\<forall>I\<in>set (newdsc p a m N' P). dsc_pair_ok P I) \<and>
                 (\<forall>I\<in>set (newdsc p m b N' P). dsc_pair_ok P I)"
             using IH_left IH_right by simp
@@ -644,22 +684,20 @@ proof (induction p a b N P rule: newdsc.pinduct)
   (* Unfold one step of newdsc (psimps). *)
   have newdsc_eq:
     "newdsc p a b N P =
-       (if a \<ge> b \<or> P = 0 then []
+       (let v = Bernstein_changes p a b P in
+        if v = 0 then []
+        else if v = 1 then [(a,b)]
         else
-          (let v = Bernstein_changes p a b P in
-           if v = 0 then []
-           else if v = 1 then [(a,b)]
-           else
-             (case try_blocks p a b N P v of
-                Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-              | None \<Rightarrow>
-                 (case try_newton p a b N P v of
-                    Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
-                  | None \<Rightarrow>
-                      (let m  = (a + b) / 2;
-                           N' = Nlin N;
-                           mid_root = (if poly P m = 0 then [(m, m)] else [])
-                       in mid_root @ newdsc p a m N' P @ newdsc p m b N' P)))))"
+          (case try_blocks p a b N P v of
+             Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+           | None \<Rightarrow>
+              (case try_newton p a b N P v of
+                 Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+               | None \<Rightarrow>
+                   (let m  = (a + b) / 2;
+                        N' = Nlin N;
+                        mid_root = (if poly P m = 0 then [(m, m)] else [])
+                    in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))"
     using "1.hyps" newdsc.psimps by blast
 
   show ?case
@@ -732,15 +770,14 @@ proof (induction p a b N P rule: newdsc.pinduct)
             "\<And>I x. \<lbrakk> try_blocks p a b N P ?v = Some I;
                        poly P x = 0; fst I < x; x < snd I \<rbrakk> \<Longrightarrow>
                    \<exists>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). fst J \<le> x \<and> x \<le> snd J"
-            using "1.IH" False deg' v_ne1 v_nonzero
-            by metis
+            using "1.IH" deg' v_ne1 v_nonzero P0' by presburger
 
           have IH_newton:
             "\<And>I x. \<lbrakk> try_blocks p a b N P ?v = None;
                        try_newton p a b N P ?v = Some I;
                        poly P x = 0; fst I < x; x < snd I \<rbrakk> \<Longrightarrow>
                    \<exists>J\<in>set (newdsc p (fst I) (snd I) (Nq N) P). fst J \<le> x \<and> x \<le> snd J"
-            using "1.IH" False deg' v_ne1 v_nonzero by metis
+            using "1.IH" deg' v_ne1 v_nonzero P0' by presburger
 
           have IH_LR:
             "\<And>m N' x.
@@ -769,7 +806,7 @@ proof (induction p a b N P rule: newdsc.pinduct)
               then have "a < x" and "x < m" using ax' xb' am by auto
               then have Ex_left:
                 "\<exists>I\<in>set (newdsc p a m N' P). fst I \<le> x \<and> x \<le> snd I"
-                using "1.IH" False deg' v_ne1 v_nonzero TB0 TN0 m_def N'_def rootx by blast
+                using "1.IH" deg' v_ne1 v_nonzero TB0 TN0 m_def N'_def rootx P0' by blast
               then show ?thesis by blast
             next
               case False
@@ -1295,6 +1332,342 @@ proof (induction p a b N P rule: newdsc.pinduct)
     show ?thesis
       using "1.prems"(1,2,3) H by blast
   qed
+qed
+
+(*
+  NOTE: this wrapper uses radical_rat_poly (same as Dsc.thy’s wrap), so if NewDsc.thy
+  does NOT already import Radical, add it to the imports list at the top:
+    imports Dsc_Misc Bernstein_Split "Real_Impl.Real_Impl" Radical
+*)
+
+subsection \<open>Executable wrapper for newdsc\<close>
+
+lemma newdsc_psimps_if:
+  fixes P :: "real poly"
+  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
+  assumes P0: "P \<noteq> 0"
+      and deg: "degree P \<le> p"
+      and p0:  "p \<noteq> 0"
+      and rsf: "rsquarefree Q"
+      and ab:  "a < b"
+      and N2:  "N \<ge> 2"
+  shows
+    "newdsc p a b N P =
+      (let v = Bernstein_changes p a b P in
+       if v = 0 then []
+       else if v = 1 then [(a, b)]
+       else
+         (case try_blocks p a b N P v of
+            Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+          | None \<Rightarrow>
+              (case try_newton p a b N P v of
+                 Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+               | None \<Rightarrow>
+                   (let m  = (a + b) / 2;
+                        N' = Nlin N;
+                        mid_root = (if poly P m = 0 then [(m, m)] else [])
+                    in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))"
+proof -
+  have dom: "newdsc_dom (p, a, b, N, P)"
+    using newdsc_terminates_squarefree_real ab N2 P0 Q_def deg p0 rsf
+    by blast
+  show ?thesis
+    using newdsc.psimps[OF dom] P0 ab
+    by argo
+qed
+
+lemma newdsc_psimps_if_radical:
+  fixes R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0: "P \<noteq> 0"
+      and deg: "degree P \<le> p"
+      and p0:  "p \<noteq> 0"
+      and ab:  "a < b"
+      and N2:  "N \<ge> 2"
+  shows
+    "newdsc p a b N P =
+      (let v = Bernstein_changes p a b P in
+       if v = 0 then []
+       else if v = 1 then [(a, b)]
+       else
+         (case try_blocks p a b N P v of
+            Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+          | None \<Rightarrow>
+              (case try_newton p a b N P v of
+                 Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+               | None \<Rightarrow>
+                   (let m  = (a + b) / 2;
+                        N' = Nlin N;
+                        mid_root = (if poly P m = 0 then [(m, m)] else [])
+                    in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))"
+proof -
+  have R0: "R \<noteq> 0"
+  proof
+    assume "R = 0"
+    then have "P = 0"
+      by (simp add: P_def radical_rat_poly_def)
+    with P0 show False by simp
+  qed
+
+  have sf_rad: "square_free (radical_rat_poly R)"
+    using radical_rat_poly_square_free[OF R0] .
+
+  have sfP: "square_free P"
+    unfolding P_def
+    using square_free_liftR[OF sf_rad] .
+
+  show ?thesis
+  proof (rule newdsc_psimps_if[of P])
+    show "P \<noteq> 0" using P0 .
+    show "degree P \<le> p" using deg .
+    show "p \<noteq> 0" using p0 .
+    show "rsquarefree (map_poly (of_real :: real \<Rightarrow> complex) P)"
+      using rsquarefree_lift[OF sfP] by simp
+    show "a < b" using ab .
+    show "N \<ge> 2" using N2 .
+  qed
+qed
+
+
+definition wrap_newdsc :: "real \<Rightarrow> real \<Rightarrow> nat \<Rightarrow> rat poly \<Rightarrow> (real \<times> real) list"
+where
+  "wrap_newdsc a b N R =
+     (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+      (let p = (degree P) in
+       (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b \<and> N \<ge> 2)
+        then newdsc p a b N P
+        else [])))"
+
+lemma wrap_newdsc_eq_newdsc:
+  fixes a b :: real and N :: nat and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:  "P \<noteq> 0"
+      and deg0:"degree P \<noteq> 0"
+      and ab:  "a < b"
+      and N2:  "N \<ge> 2"
+  shows "wrap_newdsc a b N R = newdsc (degree P) a b N P"
+  using P0 deg0 ab N2
+  by (simp add: wrap_newdsc_def P_def)
+
+declare [[code drop: wrap_newdsc]]
+
+lemma wrap_newdsc_simp:
+  "wrap_newdsc a b N R =
+     (let P = map_poly (of_rat::rat \<Rightarrow> real) (radical_rat_poly R) in
+      (let p = degree P in
+       (if (P \<noteq> 0 \<and> degree P \<le> p \<and> p \<noteq> 0 \<and> a < b \<and> N \<ge> 2)
+        then
+          (let v = Bernstein_changes p a b P in
+           if v = 0 then []
+           else if v = 1 then [(a, b)]
+           else
+             (case try_blocks p a b N P v of
+                Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+              | None \<Rightarrow>
+                  (case try_newton p a b N P v of
+                     Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+                   | None \<Rightarrow>
+                       (let m = (a + b) / 2;
+                            N' = Nlin N;
+                            mid_root = (if poly P m = 0 then [(m,m)] else [])
+                        in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))
+        else [])))"
+  unfolding wrap_newdsc_def
+  by (simp add: Let_def newdsc_psimps_if_radical split: if_split option.split)
+
+lemma midpoint_strict:
+  fixes a b :: real
+  assumes "a < b"
+  shows "a < (a + b) / 2" "(a + b) / 2 < b"
+  using assms field_less_half_sum apply blast
+  by (simp add: assms)
+
+lemma try_blocks_Some_fst_lt_snd:
+  assumes TB: "try_blocks p a b N P v = Some I"
+      and ab: "a < b"
+      and N2: "N \<ge> 2"
+  shows "fst I < snd I"
+proof -
+  have Npos: "N > 0" using N2 by simp
+  from try_blocks_SomeD[OF TB Npos ab] have w:
+    "snd I - fst I = (b - a) / of_nat N"
+    by simp
+  have "snd I - fst I > 0"
+    using ab Npos w by simp
+  then show ?thesis by simp
+qed
+
+lemma try_newton_Some_fst_lt_snd:
+  assumes TN: "try_newton p a b N P v = Some I"
+      and ab: "a < b"
+      and N2: "N \<ge> 2"
+  shows "fst I < snd I"
+proof -
+  have Npos: "N > 0" using N2 by simp
+  from try_newton_SomeD[OF TN ab Npos] have w:
+    "snd I - fst I = (b - a) / of_nat N"
+    by simp
+  have "snd I - fst I > 0"
+    using ab Npos w by simp
+  then show ?thesis by simp
+qed
+
+lemma newdsc_eq_wrap_newdsc:
+  fixes a b :: real and N :: nat and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0: "P \<noteq> 0"
+      and p0: "degree P \<noteq> 0"
+      and ab: "a < b"
+      and N2: "N \<ge> 2"
+  shows "newdsc (degree P) a b N P = wrap_newdsc a b N R"
+  using wrap_newdsc_eq_newdsc
+  by (metis N2 P0 P_def ab p0)
+
+
+lemma wrap_newdsc_code[code]:
+  "wrap_newdsc a b N R =
+     (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+      (let p = (degree P) in
+       (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b \<and> N \<ge> 2)
+        then
+          (let v = Bernstein_changes p a b P in
+           if v = 0 then []
+           else if v = 1 then [(a, b)]
+           else
+             (case try_blocks p a b N P v of
+                Some I \<Rightarrow> wrap_newdsc (fst I) (snd I) (Nq N) R
+              | None \<Rightarrow>
+                  (case try_newton p a b N P v of
+                     Some I \<Rightarrow> wrap_newdsc (fst I) (snd I) (Nq N) R
+                   | None \<Rightarrow>
+                       (let m  = (a + b) / 2;
+                            N' = Nlin N;
+                            mid_root = (if poly P m = 0 then [(m, m)] else [])
+                        in mid_root @ wrap_newdsc a m N' R @ wrap_newdsc m b N' R))))
+        else [])))"
+proof -
+  have W: "wrap_newdsc a b N R =
+     (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+      (let p = (degree P) in
+       (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b \<and> N \<ge> 2)
+        then
+          (let v = Bernstein_changes p a b P in
+           if v = 0 then []
+           else if v = 1 then [(a, b)]
+           else
+             (case try_blocks p a b N P v of
+                Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+              | None \<Rightarrow>
+                  (case try_newton p a b N P v of
+                     Some I \<Rightarrow> newdsc p (fst I) (snd I) (Nq N) P
+                   | None \<Rightarrow>
+                       (let m  = (a + b) / 2;
+                            N' = Nlin N;
+                            mid_root = (if poly P m = 0 then [(m, m)] else [])
+                        in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))
+        else [])))"
+    by (rule wrap_newdsc_simp)
+  show ?thesis
+    apply (subst W)
+    (* now rewrite the newdsc-calls in the branches into wrap_newdsc *)
+    apply (simp add: Let_def
+             newdsc_eq_wrap_newdsc
+             Nq_ge_2 Nlin_ge_2 midpoint_strict
+             try_blocks_Some_fst_lt_snd try_newton_Some_fst_lt_snd
+           split: if_split option.split)
+    using Nlin_ge_2 Nq_ge_2 newdsc_eq_wrap_newdsc try_blocks_Some_fst_lt_snd try_newton_Some_fst_lt_snd
+    by force
+qed
+
+value "wrap_newdsc (-2) 2 2 [:-1,0,0,1:] "
+
+lemma wrap_newdsc_dom:
+  fixes a b :: real and N :: nat and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+      and N2:   "N \<ge> 2"
+  shows "newdsc_dom (degree P, a, b, N, P)"
+proof -
+  have R0: "R \<noteq> 0"
+  proof
+    assume "R = 0"
+    then have "P = 0"
+      by (simp add: P_def radical_rat_poly_def)
+    with P0 show False by simp
+  qed
+
+  have sf_rad: "square_free (radical_rat_poly R)"
+    using radical_rat_poly_square_free[OF R0] .
+
+  have sfP: "square_free P"
+    unfolding P_def
+    using square_free_liftR[OF sf_rad] .
+
+  show ?thesis
+  proof (rule newdsc_terminates_squarefree_real[where P=P and p="degree P"])
+    show "P \<noteq> 0" using P0 .
+    show "degree P \<le> degree P" by simp
+    show "degree P \<noteq> 0" using deg0 .
+    show "rsquarefree (map_poly (of_real :: real \<Rightarrow> complex) P)"
+      using rsquarefree_lift[OF sfP] by simp
+    show "a < b" using ab .
+    show "N \<ge> 2" using N2 .
+  qed
+qed
+
+lemma wrap_newdsc_correct:
+  fixes a b :: real and N :: nat and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+      and N2:   "N \<ge> 2"
+  shows "\<forall>I \<in> set (wrap_newdsc a b N R). dsc_pair_ok P I"
+proof -
+  have dom: "newdsc_dom (degree P, a, b, N, P)"
+    using wrap_newdsc_dom P_def P0 deg0 ab N2 by blast
+
+  have wrap_eq: "wrap_newdsc a b N R = newdsc (degree P) a b N P"
+    using wrap_newdsc_eq_newdsc P_def P0 deg0 ab N2 by blast
+
+  have deg: "degree P \<le> degree P" by simp
+
+  show ?thesis
+    using newdsc_correct[OF dom deg P0 ab]
+    by (simp add: wrap_eq)
+qed
+
+lemma wrap_newdsc_complete:
+  fixes a b :: real and N :: nat and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+      and N2:   "N \<ge> 2"
+  shows "\<And>x. poly P x = 0 \<Longrightarrow> a < x \<Longrightarrow> x < b \<Longrightarrow>
+             (\<exists>I\<in>set (wrap_newdsc a b N R). fst I \<le> x \<and> x \<le> snd I)"
+proof -
+  have dom: "newdsc_dom (degree P, a, b, N, P)"
+    using wrap_newdsc_dom P_def P0 deg0 ab N2 by blast
+
+  have wrap_eq: "wrap_newdsc a b N R = newdsc (degree P) a b N P"
+    using wrap_newdsc_eq_newdsc P_def P0 deg0 ab N2 by blast
+
+  have deg: "degree P \<le> degree P" by simp
+  have Npos: "N > 0" using N2 by simp
+
+  fix x :: real
+  assume root: "poly P x = 0" and ax: "a < x" and xb: "x < b"
+
+  have ex_newdsc:
+    "\<exists>I\<in>set (newdsc (degree P) a b N P). fst I \<le> x \<and> x \<le> snd I"
+    using newdsc_complete[OF dom deg P0 Npos] root ax xb .
+
+  show "\<exists>I\<in>set (wrap_newdsc a b N R). fst I \<le> x \<and> x \<le> snd I"
+    using ex_newdsc
+    by (simp add: wrap_eq)
 qed
 
 

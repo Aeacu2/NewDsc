@@ -5,19 +5,17 @@ theory Dsc
 begin
 
 
-function (sequential, domintros) dsc :: "nat \<Rightarrow> real \<Rightarrow> real \<Rightarrow> real poly \<Rightarrow> (real \<times> real) list"
+function (domintros) dsc :: "nat \<Rightarrow> real \<Rightarrow> real \<Rightarrow> real poly \<Rightarrow> (real \<times> real) list"
 where
   "dsc p a b P =
-    (if a \<ge> b \<or> P = 0 then []
+    (let v = Bernstein_changes p a b P in
+     if v = 0 then []
+     else if v = 1 then [(a, b)]
      else
-       (let v = Bernstein_changes p a b P in
-        if v = 0 then []
-        else if v = 1 then [(a, b)]
-        else
-          (let m = (a + b) / 2 in
-             (if poly P m = 0 then [(m, m)] else []) @
-             dsc p a m P @
-             dsc p m b P)))"
+       (let m = (a + b) / 2 in
+          (if poly P m = 0 then [(m, m)] else []) @
+          dsc p a m P @
+          dsc p m b P))"
   by pat_completeness auto
 
 lemma dsc_domI_general:
@@ -39,24 +37,18 @@ proof -
       assume mu_lt_n: "\<mu> a b < n"
         and ab: "a < b"
       show "dsc_dom (p, a, b, P)"
-      proof (cases "a \<ge> b \<or> P = 0")
-        case True
-        then show ?thesis by (auto intro: dsc.domintros)
-      next
-        case False
+      proof -
         let ?v = "Bernstein_changes p a b P"
         show ?thesis
         proof (cases "?v = 0 \<or> ?v = 1")
           case True
           then show ?thesis
-            using False
             by (auto intro: dsc.domintros)
         next
           case False
           have v_ge2: "2 \<le> ?v"
             using False Bernstein_changes_def
             by fastforce
-
           have \<delta>_lt_width: "\<delta> < b - a"
           proof (rule ccontr)
             assume "\<not> \<delta> < b - a"
@@ -94,7 +86,7 @@ proof -
             by blast
 
           show ?thesis
-            using False dom_left dom_right
+            using dom_left dom_right
             by (auto intro: dsc.domintros simp: m_def)
         qed
       qed
@@ -135,36 +127,31 @@ lemma dsc_correct:
   assumes dom: "dsc_dom (p,a,b,P)"
       and deg: "degree P \<le> p"
       and P0:  "P \<noteq> 0"
+      and ab:  "a < b"
   shows "\<forall>I \<in> set (dsc p a b P). dsc_pair_ok P I"
-using dom deg P0
+using dom deg P0 ab
 proof (induction p a b P rule: dsc.pinduct)
   case (1 p a b P)
 
   have dsc_eq:
     "dsc p a b P =
-       (if a \<ge> b \<or> P = 0 then []
+       (let v = Bernstein_changes p a b P in
+        if v = 0 then []
+        else if v = 1 then [(a,b)]
         else
-          (let v = Bernstein_changes p a b P in
-           if v = 0 then []
-           else if v = 1 then [(a,b)]
-           else
-             (let m = (a + b) / 2 in
-                (if poly P m = 0 then [(m,m)] else []) @
-                dsc p a m P @
-                dsc p m b P)))"
+          (let m = (a + b) / 2 in
+             (if poly P m = 0 then [(m,m)] else []) @
+             dsc p a m P @
+             dsc p m b P))"
     using "1.hyps" dsc.psimps by blast
 
   show ?case
-  proof (cases "a \<ge> b \<or> P = 0")
-    case True
-    then show ?thesis
-      by (simp add: dsc_eq dsc_pair_ok_def)
-  next
-    case False
-    hence ab: "a < b" and P0': "P \<noteq> 0"
-      by auto
+  proof -
+    from 1 have ab: "a < b" and P0': "P \<noteq> 0"
+      apply blast 
+      by (simp add: "1.prems"(2))
     from 1 have deg': "degree P \<le> p"
-      by simp
+      by blast
 
     show ?thesis
     proof (subst dsc_eq, simp only: Let_def Ball_def)
@@ -203,11 +190,11 @@ proof (induction p a b P rule: dsc.pinduct)
 
           have IH_left:
             "\<forall>I\<in>set (dsc p a ?m P). dsc_pair_ok P I"
-            using "1.IH"(1) False deg' v0 v_ge2 by blast
+            using "1.IH"(1) deg' v0 v_ge2 P0' am by blast
 
           have IH_right:
             "\<forall>I\<in>set (dsc p ?m b P). dsc_pair_ok P I"
-            using "1.IH"(2) False deg' v0 v_ge2 by blast
+            using "1.IH"(2) deg' v0 v_ge2 P0' mb by blast
           
           show ?thesis
           proof (simp add: v0 v_ge2 Let_def, intro ballI impI)
@@ -256,45 +243,15 @@ proof (induction p a b P rule: dsc.pinduct)
         by (simp add: Let_def)
 
       show
-        "\<forall>x. x \<in> set (if b \<le> a \<or> P = 0 then []
-                      else if Bernstein_changes p a b P = 0 then []
-                           else if Bernstein_changes p a b P = 1 then [(a, b)]
-                                else (if poly P ((a + b) / 2) = 0
-                                      then [((a + b) / 2, (a + b) / 2)]
-                                      else []) @
-                                     dsc p a ((a + b) / 2) P @
-                                     dsc p ((a + b) / 2) b P) \<longrightarrow>
+        "\<forall>x. x \<in> set (if Bernstein_changes p a b P = 0 then []
+                      else if Bernstein_changes p a b P = 1 then [(a, b)]
+                           else (if poly P ((a + b) / 2) = 0
+                                 then [((a + b) / 2, (a + b) / 2)]
+                                 else []) @
+                                dsc p a ((a + b) / 2) P @
+                                dsc p ((a + b) / 2) b P) \<longrightarrow>
              dsc_pair_ok P x"
-      proof (intro allI impI)
-        fix x
-        assume Xin:
-          "x \<in> set (if b \<le> a \<or> P = 0 then []
-                    else if Bernstein_changes p a b P = 0 then []
-                         else if Bernstein_changes p a b P = 1 then [(a, b)]
-                              else (if poly P ((a + b) / 2) = 0
-                                    then [((a + b) / 2, (a + b) / 2)]
-                                    else []) @
-                                   dsc p a ((a + b) / 2) P @
-                                   dsc p ((a + b) / 2) b P)"
-
-        have guard: "\<not> (b \<le> a \<or> P = 0)"
-          using ab P0' by auto
-
-        from Xin guard
-        have Xin':
-          "x \<in> set (if Bernstein_changes p a b P = 0 then []
-                    else if Bernstein_changes p a b P = 1 then [(a, b)]
-                         else (if poly P ((a + b) / 2) = 0
-                               then [((a + b) / 2, (a + b) / 2)]
-                               else []) @
-                              dsc p a ((a + b) / 2) P @
-                              dsc p ((a + b) / 2) b P)"
-          by simp
-
-        from H have "dsc_pair_ok P x"
-          using Xin' by blast
-        thus "dsc_pair_ok P x" .
-      qed
+        using H by blast
     qed
   qed
 qed
@@ -311,8 +268,7 @@ lemma dsc_psimps_if_squarefree_real:
       and ab:  "a < b"
   shows
     "dsc p a b P =
-      (if b \<le> a \<or> P = 0 then []
-       else let v = Bernstein_changes p a b P
+      (let v = Bernstein_changes p a b P
             in if v = 0 then []
                else if v = 1 then [(a, b)]
                     else let m = (a + b) / 2
@@ -339,27 +295,18 @@ proof (induction p a b P rule: dsc.pinduct)
   case (1 p a b P)
   have dsc_eq:
     "dsc p a b P =
-       (if a \<ge> b \<or> P = 0 then []
+       (let v = Bernstein_changes p a b P in
+        if v = 0 then []
+        else if v = 1 then [(a,b)]
         else
-          (let v = Bernstein_changes p a b P in
-           if v = 0 then []
-           else if v = 1 then [(a,b)]
-           else
-             (let m = (a + b) / 2 in
-                (if poly P m = 0 then [(m,m)] else []) @
-                dsc p a m P @
-                dsc p m b P)))"
+          (let m = (a + b) / 2 in
+             (if poly P m = 0 then [(m,m)] else []) @
+             dsc p a m P @
+             dsc p m b P))"
     using "1.hyps" dsc.psimps by blast
 
   show ?case
-  proof (cases "a \<ge> b \<or> P = 0")
-    case True
-    then show ?thesis
-      using "1.prems"(2,3,5) by argo
-  next
-    case False
-    hence ab: "a < b" and P0': "P \<noteq> 0"
-      using P0 by auto
+  proof -
     from 1 have deg': "degree P \<le> p"
       by simp
 
@@ -371,6 +318,11 @@ proof (induction p a b P rule: dsc.pinduct)
       assume root: "poly P x = 0"
          and ax:   "a < x"
          and xb:   "x < b"
+
+      have ab: "a < b"
+        using ax xb by linarith
+      have P0': "P \<noteq> 0"
+        using P0 "1.prems"(5) by blast
 
       let ?v = "Bernstein_changes p a b P"
 
@@ -409,12 +361,12 @@ proof (induction p a b P rule: dsc.pinduct)
         have IH_left:
           "\<And>x. poly P x = 0 \<Longrightarrow> a < x \<Longrightarrow> x < ?m \<Longrightarrow>
                (\<exists>I\<in>set (dsc p a ?m P). fst I \<le> x \<and> x \<le> snd I)"
-          using "1.IH"(1) False deg' v_ne1 v_nonzero by blast
+          using "1.IH"(1) deg' v_ne1 v_nonzero P0' by blast
 
         have IH_right:
           "\<And>x. poly P x = 0 \<Longrightarrow> ?m < x \<Longrightarrow> x < b \<Longrightarrow>
                (\<exists>I\<in>set (dsc p ?m b P). fst I \<le> x \<and> x \<le> snd I)"
-          using "1.IH"(2) False deg' v_ne1 v_nonzero by blast
+          using "1.IH"(2) deg' v_ne1 v_nonzero P0' by blast
 
         show ?thesis
         proof (cases "x = ?m")
@@ -493,7 +445,7 @@ proof (induction p a b P rule: dsc.pinduct)
       have Ex_dsc:
         "\<exists>I\<in>set (dsc p a b P). fst I \<le> x \<and> x \<le> snd I"
         using Ex
-        by (simp add: dsc_eq False Let_def)
+        by (simp add: dsc_eq Let_def)
 
       show "\<exists>I\<in>set (dsc p a b P). fst I \<le> x \<and> x \<le> snd I"
         using Ex_dsc by simp
@@ -513,8 +465,6 @@ where
      (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
        then dsc p a b P 
         else [])))"
-
-lemma wrap_eq_dsc: 
 
 lemma dsc_psimps_if:
   fixes P :: "real poly"
@@ -618,9 +568,93 @@ lemma wrap_code[code]:  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightar
                          in (if poly P m = 0 then [(m, m)] else [])
                             @ wrap a m R @ wrap m b R)
         else [])))"
-  by (smt (verit) dsc.domintros dsc.psimps wrap_eq_dsc wrap_simp)
-
+  by (smt (verit) dsc_psimps_if_radical gt_half_sum less_half_sum wrap_def)
 
 value "wrap (-2) 2 [:-1,0,0,1:] "
+
+lemma wrap_dsc_dom:
+  fixes a b :: real and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+  shows "dsc_dom (degree P, a, b, P)"
+proof -
+  have R0: "R \<noteq> 0"
+  proof
+    assume "R = 0"
+    then have "P = 0"
+      by (simp add: P_def radical_rat_poly_def)
+    with P0 show False by simp
+  qed
+
+  have sf_rad: "square_free (radical_rat_poly R)"
+    using radical_rat_poly_square_free[OF R0] .
+
+  have sfP: "square_free P"
+    unfolding P_def
+    using square_free_liftR[OF sf_rad] .
+
+  show ?thesis
+  proof (rule dsc_terminates_squarefree_real[where P=P and p="degree P" and a=a and b=b])
+    show "P \<noteq> 0" using P0 .
+    show "degree P \<le> degree P" by simp
+    show "degree P \<noteq> 0" using deg0 .
+    show "rsquarefree (map_poly complex_of_real P)"
+      using rsquarefree_lift[OF sfP] .
+    show "a < b" using ab .
+  qed
+qed
+
+lemma wrap_correct:
+  fixes a b :: real and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+  shows "\<forall>I \<in> set (wrap a b R). dsc_pair_ok P I"
+proof -
+  have dom: "dsc_dom (degree P, a, b, P)"
+    using wrap_dsc_dom P0 P_def ab deg0 by blast
+
+  have wrap_dsc: "wrap a b R = dsc (degree P) a b P"
+    using wrap_eq_dsc P_def P0 deg0 ab by blast
+
+  have deg: "degree P \<le> degree P" by simp
+
+  show ?thesis
+    using dsc_correct[OF dom deg P0 ab]
+    by (simp add: wrap_dsc)
+qed
+
+lemma wrap_complete:
+  fixes a b :: real and R :: "rat poly"
+  defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+  shows "\<And>x. poly P x = 0 \<Longrightarrow> a < x \<Longrightarrow> x < b \<Longrightarrow>
+             (\<exists>I\<in>set (wrap a b R). fst I \<le> x \<and> x \<le> snd I)"
+proof -
+  have dom: "dsc_dom (degree P, a, b, P)"
+    using wrap_dsc_dom P_def P0 deg0 ab by blast
+
+  have wrap_dsc: "wrap a b R = dsc (degree P) a b P"
+    using wrap_eq_dsc P_def P0 deg0 ab by blast
+
+  have deg: "degree P \<le> degree P" by simp
+
+  fix x :: real
+  assume root: "poly P x = 0" and ax: "a < x" and xb: "x < b"
+
+  have ex_dsc:
+    "\<exists>I\<in>set (dsc (degree P) a b P). fst I \<le> x \<and> x \<le> snd I"
+    using dsc_complete[OF dom deg P0] root ax xb .
+
+  show "\<exists>I\<in>set (wrap a b R). fst I \<le> x \<and> x \<le> snd I"
+    using ex_dsc
+    by (simp add: wrap_dsc)
+qed
+
 
 end
