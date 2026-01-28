@@ -104,11 +104,10 @@ qed
 
 lemma dsc_terminates_squarefree_real:
   fixes P :: "real poly"
-  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
   assumes P0: "P \<noteq> 0"
       and deg: "degree P \<le> p"
       and p0: "p \<noteq> 0"
-      and rsf: "rsquarefree Q"
+      and sf: "square_free P"
   shows "\<And>a b. a < b \<Longrightarrow> dsc_dom (p,a,b,P)"
 proof -
   have \<delta>_pos: "delta_P P > 0"
@@ -116,7 +115,7 @@ proof -
 
   have small:
     "\<And>a b. a < b \<Longrightarrow> b - a \<le> delta_P P \<Longrightarrow> Bernstein_changes p a b P \<le> 1"
-  using Bernstein_changes_small_interval_le_1 P0 Q_def deg p0 rsf
+  using Bernstein_changes_small_interval_le_1 P0 deg p0 sf rsquarefree_lift
   by blast
 
   show "\<And>a b. a < b \<Longrightarrow> dsc_dom (p,a,b,P)"
@@ -256,15 +255,16 @@ proof (induction p a b P rule: dsc.pinduct)
   qed
 qed
 
+
+
 thm dsc.psimps
 
 lemma dsc_psimps_if_squarefree_real:
   fixes P :: "real poly"
-  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
   assumes P0: "P \<noteq> 0"
       and deg: "degree P \<le> p"
       and p0:  "p \<noteq> 0"
-      and rsf: "rsquarefree Q"
+      and sf: "square_free P"
       and ab:  "a < b"
   shows
     "dsc p a b P =
@@ -276,7 +276,7 @@ lemma dsc_psimps_if_squarefree_real:
                             @ dsc p a m P @ dsc p m b P)"
 proof -
   have dom: "dsc_dom (p, a, b, P)"
-    using dsc_terminates_squarefree_real ab P0 Q_def deg p0 rsf by blast
+    using dsc_terminates_squarefree_real ab P0 deg p0 sf by blast
   show ?thesis
     using dsc.psimps[OF dom]
     by simp
@@ -468,11 +468,10 @@ where
 
 lemma dsc_psimps_if:
   fixes P :: "real poly"
-  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
   assumes P0: "P \<noteq> 0"
       and deg: "degree P \<le> p"
       and p0:  "p \<noteq> 0"
-      and rsf: "rsquarefree Q"
+      and sf: "square_free P"
       and ab:  "a < b"
   shows
     "dsc p a b P =
@@ -484,7 +483,7 @@ lemma dsc_psimps_if:
                             @ dsc p a m P @ dsc p m b P)"
 proof -
   have dom: "dsc_dom (p, a, b, P)"
-    using dsc_terminates_squarefree_real ab P0 Q_def deg p0 rsf by blast
+    using dsc_terminates_squarefree_real ab P0 deg p0 sf by blast
   show ?thesis
     using dsc.psimps[OF dom]
     using P0 ab by argo
@@ -526,8 +525,7 @@ proof -
     show "P \<noteq> 0" using P0 .
     show "degree P \<le> p" using deg .
     show "p \<noteq> 0" using p0 .
-    show "rsquarefree (map_poly complex_of_real P)"
-      using rsquarefree_lift[OF sfP] .
+    show "square_free P" using sfP .
     show "a < b" using ab .
   qed
 qed
@@ -600,8 +598,7 @@ proof -
     show "P \<noteq> 0" using P0 .
     show "degree P \<le> degree P" by simp
     show "degree P \<noteq> 0" using deg0 .
-    show "rsquarefree (map_poly complex_of_real P)"
-      using rsquarefree_lift[OF sfP] .
+    show "square_free P" using sfP .
     show "a < b" using ab .
   qed
 qed
@@ -637,7 +634,7 @@ lemma wrap_complete:
              (\<exists>I\<in>set (wrap a b R). fst I \<le> x \<and> x \<le> snd I)"
 proof -
   have dom: "dsc_dom (degree P, a, b, P)"
-    using wrap_dsc_dom P_def P0 deg0 ab by blast
+    using P0 P_def ab deg0 wrap_dsc_dom by blast
 
   have wrap_dsc: "wrap a b R = dsc (degree P) a b P"
     using wrap_eq_dsc P_def P0 deg0 ab by blast

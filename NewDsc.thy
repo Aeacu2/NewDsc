@@ -433,18 +433,17 @@ qed
 
 lemma newdsc_terminates_squarefree_real:
   fixes P :: "real poly"
-  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
   assumes P0: "P \<noteq> 0"
       and deg: "degree P \<le> p"
       and p0: "p \<noteq> 0"
-      and rsf: "rsquarefree Q"
+      and sf: "square_free P"
   shows "\<And>a b N. a < b \<Longrightarrow> N \<ge> 2 \<Longrightarrow> newdsc_dom (p,a,b,N,P)"
 proof -
   have \<delta>_pos: "delta_P P > 0"
     using P0 delta_P_pos by blast
   have small:
     "\<And>a b. a < b \<Longrightarrow> b - a \<le> delta_P P \<Longrightarrow> Bernstein_changes p a b P \<le> 1"
-    using Bernstein_changes_small_interval_le_1 P0 Q_def deg p0 rsf by blast
+    using Bernstein_changes_small_interval_le_1 P0 deg p0 sf rsquarefree_lift by blast
   show "\<And>a b N. a < b \<Longrightarrow> N \<ge> 2 \<Longrightarrow> newdsc_dom (p,a,b,N,P)"
     using newdsc_domI_general[OF \<delta>_pos small] by blast
 qed
@@ -1344,11 +1343,10 @@ subsection \<open>Executable wrapper for newdsc\<close>
 
 lemma newdsc_psimps_if:
   fixes P :: "real poly"
-  defines "Q \<equiv> map_poly (of_real :: real \<Rightarrow> complex) P"
   assumes P0: "P \<noteq> 0"
       and deg: "degree P \<le> p"
       and p0:  "p \<noteq> 0"
-      and rsf: "rsquarefree Q"
+      and sf: "square_free P"
       and ab:  "a < b"
       and N2:  "N \<ge> 2"
   shows
@@ -1369,7 +1367,7 @@ lemma newdsc_psimps_if:
                     in mid_root @ newdsc p a m N' P @ newdsc p m b N' P))))"
 proof -
   have dom: "newdsc_dom (p, a, b, N, P)"
-    using newdsc_terminates_squarefree_real ab N2 P0 Q_def deg p0 rsf
+    using newdsc_terminates_squarefree_real ab N2 P0 deg p0 sf
     by blast
   show ?thesis
     using newdsc.psimps[OF dom] P0 ab
@@ -1421,8 +1419,7 @@ proof -
     show "P \<noteq> 0" using P0 .
     show "degree P \<le> p" using deg .
     show "p \<noteq> 0" using p0 .
-    show "rsquarefree (map_poly (of_real :: real \<Rightarrow> complex) P)"
-      using rsquarefree_lift[OF sfP] by simp
+    show "square_free P" using sfP .
     show "a < b" using ab .
     show "N \<ge> 2" using N2 .
   qed
@@ -1610,8 +1607,7 @@ proof -
     show "P \<noteq> 0" using P0 .
     show "degree P \<le> degree P" by simp
     show "degree P \<noteq> 0" using deg0 .
-    show "rsquarefree (map_poly (of_real :: real \<Rightarrow> complex) P)"
-      using rsquarefree_lift[OF sfP] by simp
+    show "square_free P" using sfP .
     show "a < b" using ab .
     show "N \<ge> 2" using N2 .
   qed
