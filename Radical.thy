@@ -1,6 +1,7 @@
 theory Radical
   imports "Polynomial_Factorization.Square_Free_Factorization"
           "Polynomial_Factorization.Gcd_Rat_Poly"
+           "Sturm_Sequences.Misc_Polynomial"
 begin
 
 lemma poly_prod_list_eq_0_iff:
@@ -312,7 +313,34 @@ next
     using roots_rad roots_p by blast
 qed
 
+definition radical_real_poly :: "real poly => real poly" where
+  "radical_real_poly p =  p div (gcd p (pderiv p))"
 
+lemma radical_real_poly_square_free:
+  assumes "p \<noteq> (0 :: real poly)"
+  shows "square_free (radical_real_poly p)"
+  by (simp add: assms poly_div_gcd_squarefree(1) radical_real_poly_def separable_def
+      separable_imp_square_free)
+
+lemma radical_real_poly_rsquarefree:
+  assumes "p \<noteq> (0 :: real poly)"
+  shows "rsquarefree (radical_real_poly p)"
+  by (simp add: assms radical_real_poly_square_free square_free_rsquarefree)
+
+lemma radical_real_poly_same_roots:
+  fixes p :: "real poly" and x :: real
+  shows "(poly (radical_real_poly p) x = 0) \<longleftrightarrow> (poly p x = 0)"
+proof (cases "p = (0 :: real poly)")
+  case True
+  then show ?thesis by (simp add: radical_real_poly_def)
+next
+  case False
+  have "poly (radical_real_poly p) x = 0  \<longleftrightarrow> poly (p div (gcd p (pderiv p))) x = 0"
+    by (simp add: radical_real_poly_def)
+  also have "...  \<longleftrightarrow> poly p x = 0"
+    using poly_div_gcd_squarefree[of p] by fastforce
+  finally show ?thesis .
+qed
 
 
 end

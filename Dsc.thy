@@ -122,7 +122,7 @@ proof -
     using dsc_domI_general[OF \<delta>_pos small] .
 qed
 
-lemma dsc_correct:
+lemma dsc_sound:
   assumes dom: "dsc_dom (p,a,b,P)"
       and deg: "degree P \<le> p"
       and P0:  "P \<noteq> 0"
@@ -457,15 +457,6 @@ proof (induction p a b P rule: dsc.pinduct)
   qed
 qed
 
-
-definition wrap :: "real \<Rightarrow> real \<Rightarrow> rat poly \<Rightarrow> (real \<times> real) list"
-where
-  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
-    (let p = (degree P) in
-     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
-       then dsc p a b P 
-        else [])))"
-
 lemma dsc_psimps_if:
   fixes P :: "real poly"
   assumes P0: "P \<noteq> 0"
@@ -530,6 +521,14 @@ proof -
   qed
 qed
 
+definition wrap :: "real \<Rightarrow> real \<Rightarrow> rat poly \<Rightarrow> (real \<times> real) list"
+where
+  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then dsc p a b P 
+        else [])))"
+
 lemma wrap_eq_dsc:
   fixes a b :: real and R :: "rat poly"
   defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
@@ -539,10 +538,6 @@ lemma wrap_eq_dsc:
   shows "wrap a b R = dsc (degree P) a b P"
     using P0 deg0 ab
     by (simp add: wrap_def P_def)
-
-
-
-declare [[code drop: wrap]]
 
 lemma wrap_simp:  "wrap a b R = (let P = (map_poly (of_rat:: rat \<Rightarrow> real) (radical_rat_poly R)) in
     (let p = (degree P) in
@@ -603,7 +598,7 @@ proof -
   qed
 qed
 
-lemma wrap_correct:
+lemma wrap_sound:
   fixes a b :: real and R :: "rat poly"
   defines "P \<equiv> map_poly (of_rat :: rat \<Rightarrow> real) (radical_rat_poly R)"
   assumes P0:   "P \<noteq> 0"
@@ -620,7 +615,7 @@ proof -
   have deg: "degree P \<le> degree P" by simp
 
   show ?thesis
-    using dsc_correct[OF dom deg P0 ab]
+    using dsc_sound[OF dom deg P0 ab]
     by (simp add: wrap_dsc)
 qed
 
@@ -651,6 +646,129 @@ proof -
   show "\<exists>I\<in>set (wrap a b R). fst I \<le> x \<and> x \<le> snd I"
     using ex_dsc
     by (simp add: wrap_dsc)
+qed
+
+
+definition wrap_real :: "real \<Rightarrow> real \<Rightarrow> real poly \<Rightarrow> (real \<times> real) list"
+where
+  "wrap_real a b R = (let P = (radical_real_poly R) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then dsc p a b P 
+        else [])))"
+
+
+lemma wrap_real_eq_dsc:
+  fixes a b :: real and R :: "real poly"
+  defines "P \<equiv> (radical_real_poly R)"
+  assumes P0:  "P \<noteq> 0"
+      and deg0:"degree P \<noteq> 0"
+      and ab:  "a < b"
+  shows "wrap_real a b R = dsc (degree P) a b P"
+    using P0 deg0 ab
+    by (smt (verit) P_def less_or_eq_imp_le wrap_real_def)
+
+lemma wrap_real_simp:  "wrap_real a b R = (let P =  (radical_real_poly R) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then (let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ dsc p a m P @ dsc p m b P)
+        else [])))"
+  by (smt (verit) div_by_0 dsc_psimps_if_squarefree_real gcd_eq_0_iff pderiv_0 radical_real_poly_def
+      radical_real_poly_square_free wrap_real_def)
+
+lemma wrap_real_code[code]:  "wrap_real a b R = (let P = (radical_real_poly R) in
+    (let p = (degree P) in
+     (if (P \<noteq> 0 \<and> (degree P) \<le> p \<and> p \<noteq> 0 \<and> a < b)
+       then (let v = Bernstein_changes p a b P
+            in if v = 0 then []
+               else if v = 1 then [(a, b)]
+                    else let m = (a + b) / 2
+                         in (if poly P m = 0 then [(m, m)] else [])
+                            @ wrap_real a m R @ wrap_real m b R)
+        else [])))"
+  by (smt (verit, best) field_sum_of_halves wrap_real_eq_dsc wrap_real_simp)
+
+value "wrap_real (-2) 2 [:-1,0,0,1:] "
+
+lemma wrap_real_dsc_dom:
+  fixes a b :: real and R :: "real poly"
+  defines "P \<equiv> (radical_real_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+  shows "dsc_dom (degree P, a, b, P)"
+proof -
+  have R0: "R \<noteq> 0"
+  proof
+    assume "R = 0"
+    then have "P = 0"
+      by (simp add: P_def radical_real_poly_def)
+    with P0 show False by simp
+  qed
+
+  show ?thesis
+  proof (rule dsc_terminates_squarefree_real[where P=P and p="degree P" and a=a and b=b])
+    show "P \<noteq> 0" using P0 .
+    show "degree P \<le> degree P" by simp
+    show "degree P \<noteq> 0" using deg0 .
+    show "square_free P" using P_def R0 radical_real_poly_square_free by presburger
+    show "a < b" using ab .
+  qed
+qed
+
+lemma wrap_real_sound:
+  fixes a b :: real and R :: "real poly"
+  defines "P \<equiv> (radical_real_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+  shows "\<forall>I \<in> set (wrap_real a b R). dsc_pair_ok P I"
+proof -
+  have dom: "dsc_dom (degree P, a, b, P)"
+    using wrap_real_dsc_dom P0 P_def ab deg0 by blast
+
+  have wrap_real_dsc: "wrap_real a b R = dsc (degree P) a b P"
+    using wrap_real_eq_dsc P_def P0 deg0 ab by blast
+
+  have deg: "degree P \<le> degree P" by simp
+
+  show ?thesis
+    using dsc_sound[OF dom deg P0 ab]
+    by (simp add: wrap_real_dsc)
+qed
+
+lemma wrap_real_complete:
+  fixes a b :: real and R :: "real poly"
+  defines "P \<equiv> (radical_real_poly R)"
+  assumes P0:   "P \<noteq> 0"
+      and deg0: "degree P \<noteq> 0"
+      and ab:   "a < b"
+  shows "\<And>x. poly P x = 0 \<Longrightarrow> a < x \<Longrightarrow> x < b \<Longrightarrow>
+             (\<exists>I\<in>set (wrap_real a b R). fst I \<le> x \<and> x \<le> snd I)"
+proof -
+  have dom: "dsc_dom (degree P, a, b, P)"
+    using P0 P_def ab deg0 wrap_real_dsc_dom by blast
+
+  have wrap_real_dsc: "wrap_real a b R = dsc (degree P) a b P"
+    using wrap_real_eq_dsc P_def P0 deg0 ab by blast
+
+  have deg: "degree P \<le> degree P" by simp
+
+  fix x :: real
+  assume root: "poly P x = 0" and ax: "a < x" and xb: "x < b"
+
+  have ex_dsc:
+    "\<exists>I\<in>set (dsc (degree P) a b P). fst I \<le> x \<and> x \<le> snd I"
+    using dsc_complete[OF dom deg P0] root ax xb .
+
+  show "\<exists>I\<in>set (wrap_real a b R). fst I \<le> x \<and> x \<le> snd I"
+    using ex_dsc
+    by (simp add: wrap_real_dsc)
 qed
 
 
