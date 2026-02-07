@@ -4,164 +4,7 @@ imports
   Main
   "List_changes"
   "Three_Circles.Bernstein"
-  "Descartes_Sign_Rule.Descartes_Sign_Rule"
 begin
-
-
-lemma changes_filter_zeros: "changes xs = changes (filter (\<lambda>x. x \<noteq> 0) xs)"
-proof (induction xs rule: changes.induct)
-  case 1 then show ?case by simp
-next
-  case (2 x) then show ?case by simp
-next
-  case (3 x1 x2 xs)
-  show ?case
-  proof (cases "x2 = 0")
-    case True
-    (* If x2 is 0, changes skips it. Filter also removes it. *)
-    have "changes (x1 # x2 # xs) = changes (x1 # xs)"
-      using True by (simp)
-    also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # xs))"
-      by (metis changes_filter_eq)
-    also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # x2 # xs))"
-      using True by simp
-    finally show ?thesis .
-  next
-    case False
-    (* If x2 != 0, we check x1 *)
-    note x2_nz = False
-    show ?thesis
-    proof (cases "x1 = 0")
-      case True
-      (* If x1 is 0, changes (0 # x2 # xs). 0*x2 is 0 (not < 0). x2!=0. 
-         So changes reduces to changes (x2 # xs).
-         Filter removes x1. Result matches. *)
-      have "changes (x1 # x2 # xs) = changes (x2 # xs)"
-        using True x2_nz by simp
-      also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x2 # xs))"
-        using "3.IH"(1,3) x2_nz by blast
-      also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # x2 # xs))"
-        using True by simp
-      finally show ?thesis .
-    next
-      case False
-      (* Both non-zero. Changes logic applies. Filter keeps both. *)
-      have "changes (x1 # x2 # xs) = (if x1*x2 < 0 then 1 else 0) + changes (x2 # xs)"
-        using x2_nz by simp
-      also have "\<dots> = (if x1*x2 < 0 then 1 else 0) + changes (filter (\<lambda>x. x \<noteq> 0) (x2 # xs))"
-        using "3.IH"(1,3) x2_nz by presburger
-      also have "\<dots> = changes (x1 # x2 # (filter (\<lambda>x. x \<noteq> 0) xs))"
-        using x2_nz False by simp
-      also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # x2 # xs))"
-        using x2_nz False by simp
-      finally show ?thesis .
-    qed
-  qed
-qed
-
-(* Lemma 2: Equivalence for zero-free lists *)
-lemma changes_eq_sign_changes_no_zeros:
-  assumes "\<forall>x \<in> set xs. x \<noteq> 0"
-  shows "changes xs = int (sign_changes xs)"
-  using assms
-proof (induction xs rule: induct_list012)
-  case 1 then show ?case by (simp add: sign_changes_def)
-next
-  case (2 x) then show ?case 
-    by (simp add: sign_changes_def Let_def)
-next
-  case (3 x1 x2 xs)
-  have x1_nz: "x1 \<noteq> 0" and x2_nz: "x2 \<noteq> 0" and xs_nz: "\<forall>x \<in> set xs. x \<noteq> 0"
-    using 3 by auto
-    
-  (* Simplify sign_changes for the list x1#x2#xs *)
-  let ?L = "x1 # x2 # xs"
-  let ?sgn_L = "remdups_adj (map sgn ?L)"
-  
-  (* Determine if signs flip *)
-  have sgn_rel: "sgn x1 \<noteq> sgn x2 \<longleftrightarrow> x1 * x2 < 0"
-    using x1_nz x2_nz
-    by (simp add: mult_less_0_iff sgn_1_neg sgn_if)
-    
-  show ?case
-  proof (cases "x1 * x2 < 0")
-    case True
-    (* Signs differ *)
-    have "sgn x1 \<noteq> sgn x2" using sgn_rel True by simp
-    
-    (* changes logic: *)
-    have ch_L: "changes ?L = 1 + changes (x2 # xs)"
-      using True by simp
-      
-    (* sign_changes logic: *)
-    (* Since x1, x2 != 0, filter keeps them. *)
-    (* remdups_adj (sgn x1 # sgn x2 # ...) keeps sgn x1 because it differs from sgn x2 *)
-    
-    have "sign_changes ?L = length (remdups_adj (map sgn (x1#x2#xs))) - 1"
-      using x1_nz x2_nz xs_nz 
-      unfolding sign_changes_def 
-      by (simp add: filter_id_conv sgn_eq_0_iff)
-    also have "\<dots> = length (sgn x1 # remdups_adj (map sgn (x2#xs))) - 1"
-      using `sgn x1 \<noteq> sgn x2` by auto
-    also have "\<dots> = 1 + (length (remdups_adj (map sgn (x2#xs))) - 1)"
-      (* map sgn (x2#xs) is non-empty, so remdups is non-empty *)
-      by (simp add: algebra_simps)
-    also have "\<dots> = 1 + sign_changes (x2 # xs)"
-      using x2_nz xs_nz unfolding sign_changes_def 
-      by (metis True calculation sign_changes_Cons_Cons_different
-          sign_changes_def)
-      
-    finally show ?thesis 
-      using "3.IH"(2) ch_L x2_nz xs_nz by auto
-  next
-    case False
-    (* Signs same (or zero, but zero ruled out) *)
-    have "sgn x1 = sgn x2" 
-      using sgn_rel False x1_nz x2_nz 
-      by metis
-      
-    (* changes logic: *)
-    have ch_L: "changes ?L = changes (x2 # xs)"
-      using False x2_nz by simp
-      
-    (* sign_changes logic: *)
-    have "remdups_adj (map sgn (x1#x2#xs)) = remdups_adj (map sgn (x2#xs))"
-      using `sgn x1 = sgn x2` by force
-      
-    then have "sign_changes ?L = sign_changes (x2 # xs)"
-      unfolding sign_changes_def using x1_nz x2_nz xs_nz 
-      by force
-      
-    show ?thesis
-      using "3.IH"(2) \<open>sign_changes (x1 # x2 # xs) = sign_changes (x2 # xs)\<close> ch_L x2_nz
-        xs_nz by force
-  qed
-qed
-
-lemma changes_eq_sign_changes: "changes xs = int (sign_changes xs)"
-proof -
-  let ?xs' = "filter (\<lambda>x. x \<noteq> 0) xs"
-  
-  (* 1. changes is invariant under filter *)
-  have "changes xs = changes ?xs'" 
-    using changes_filter_zeros 
-  by blast
-    
-  (* 2. sign_changes is invariant under filter (by definition) *)
-  have "sign_changes xs = sign_changes ?xs'"
-    unfolding sign_changes_def 
-    by (metis sign_changes_def sign_changes_filter)
-    
-  (* 3. Equivalence holds for zero-free lists *)
-  have "changes ?xs' = int (sign_changes ?xs')"
-    apply (rule changes_eq_sign_changes_no_zeros)
-    by simp
-    
-  show ?thesis
-    using `changes xs = changes ?xs'` `sign_changes xs = sign_changes ?xs'` 
-          `changes ?xs' = int (sign_changes ?xs')`
-    by simp
-qed
 
 lemma Bernstein_changes_01_eq_sign_changes:
   "Bernstein_changes_01 p P = sign_changes (Bernstein_coeffs_01 p P)"
@@ -752,5 +595,147 @@ proof -
     using term_left term_right term_total by presburger
 
 qed
+
+lemma Bernstein_coeffs_split:
+  fixes P :: "real poly"
+  assumes ac: "a < c" and cb: "c < b"
+      and deg: "degree P \<le> p"
+  defines "t \<equiv> (c - a) / (b - a)"
+  shows
+    "Bernstein_coeffs p a c P = dc_left t (Bernstein_coeffs p a b P)"
+    "Bernstein_coeffs p c b P = dc_right t (Bernstein_coeffs p a b P)"
+proof -
+  have ab: "a < b" using ac cb by linarith
+  have anb: "a \<noteq> b" using ab by simp
+  have anc: "a \<noteq> c" using ac by simp
+  have cnb: "c \<noteq> b" using cb by simp
+
+  define Q where "Q = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, b - a:]"
+  have degQ: "degree Q \<le> p"
+    using deg by (simp add: Q_def)
+
+  have coeff_ab:
+    "Bernstein_coeffs p a b P = Bernstein_coeffs_01 p Q"
+    using Bernstein_coeffs_eq_rescale[OF anb]  
+    by (simp add: Q_def)
+
+  have Q_left:
+    "Q \<circ>\<^sub>p [:0, t:] = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, c - a:]"
+  proof -
+    have "Q \<circ>\<^sub>p [:0, t:]
+        = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p ([:0, b - a:] \<circ>\<^sub>p [:0, t:])"
+      by (simp add: Q_def pcompose_assoc)
+    also have "[:0, b - a:] \<circ>\<^sub>p [:0, t:] = [:0, (b - a) * t:]"
+      by (simp add: pcompose_pCons)
+    also have "(b - a) * t = c - a"
+      using ab by (simp add: t_def field_simps)
+    finally show ?thesis
+      by (simp add: pcompose_assoc)
+  qed
+
+  have coeff_ac:
+    "Bernstein_coeffs p a c P =
+     Bernstein_coeffs_01 p (Q \<circ>\<^sub>p [:0, t:])"
+  proof -
+    have "Bernstein_coeffs p a c P =
+          Bernstein_coeffs_01 p (P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, c - a:])"
+      using Bernstein_coeffs_eq_rescale[OF anc]  
+      by simp
+    also have "... = Bernstein_coeffs_01 p (Q \<circ>\<^sub>p [:0, t:])"
+      by (simp add: Q_left)
+    finally show ?thesis .
+  qed
+
+  have Q_right:
+    "Q \<circ>\<^sub>p [:t, 1 - t:] = P \<circ>\<^sub>p [:c, 1:] \<circ>\<^sub>p [:0, b - c:]"
+  proof -
+    have "Q \<circ>\<^sub>p [:t, 1 - t:]
+        = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p ([:0, b - a:] \<circ>\<^sub>p [:t, 1 - t:])"
+      by (simp add: Q_def pcompose_assoc)
+    also have "[:0, b - a:] \<circ>\<^sub>p [:t, 1 - t:] = [:(b - a) * t, (b - a) * (1 - t):]"
+      by (simp add: pcompose_pCons)
+    also have "(b - a) * t = c - a"
+      using ab by (simp add: t_def field_simps)
+    also have "(b - a) * (1 - t) = b - c"
+      using ab by (simp add: t_def field_simps)
+    finally have inner:
+      "[:0, b - a:] \<circ>\<^sub>p [:t, 1 - t:] = [:(c - a), b - c:]"
+      using \<open>(b - a) * (1 - t) = b - c\<close> \<open>(b - a) * t = c - a\<close>
+        \<open>[:0, b - a:] \<circ>\<^sub>p [:t, 1 - t:] = [:(b - a) * t, (b - a) * (1 - t):]\<close> by presburger
+
+    have "P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:(c - a), b - c:]
+        = P \<circ>\<^sub>p [:c, b - c:]"
+      by (smt (verit, del_insts) add_0 add_pCons mult.right_neutral one_pCons pcompose_assoc pcompose_const
+          pcompose_pCons)
+    also have "... = P \<circ>\<^sub>p [:c, 1:] \<circ>\<^sub>p [:0, b - c:]"
+      by (metis (no_types, opaque_lifting) mult.comm_neutral pCons_0_as_mult pcompose_1 pcompose_assoc
+          pcompose_idR pcompose_pCons)
+    finally show ?thesis
+      using inner \<open>Q \<circ>\<^sub>p [:t, 1 - t:] = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p ([:0, b - a:] \<circ>\<^sub>p [:t, 1 - t:])\<close> by presburger
+  qed
+
+  have coeff_cb:
+    "Bernstein_coeffs p c b P =
+     Bernstein_coeffs_01 p (Q \<circ>\<^sub>p [:t, 1 - t:])"
+  proof -
+    have "Bernstein_coeffs p c b P =
+          Bernstein_coeffs_01 p (P \<circ>\<^sub>p [:c, 1:] \<circ>\<^sub>p [:0, b - c:])"
+      using Bernstein_coeffs_eq_rescale[OF cnb]  
+      by simp
+    also have "... = Bernstein_coeffs_01 p (Q \<circ>\<^sub>p [:t, 1 - t:])"
+      by (simp add: Q_right)
+    finally show ?thesis .
+  qed
+
+  have L01:
+    "Bernstein_coeffs_01 p (Q \<circ>\<^sub>p [:0, t:]) =
+     dc_left t (Bernstein_coeffs_01 p Q)"
+    using Bernstein_coeffs_01_split_left[OF degQ] .
+
+  have R01:
+    "Bernstein_coeffs_01 p (Q \<circ>\<^sub>p [:t, 1 - t:]) =
+     dc_right t (Bernstein_coeffs_01 p Q)"
+    using Bernstein_coeffs_01_split_right[OF degQ] .
+
+  show "Bernstein_coeffs p a c P = dc_left t (Bernstein_coeffs p a b P)"
+    using coeff_ac coeff_ab L01 by simp
+
+  show "Bernstein_coeffs p c b P = dc_right t (Bernstein_coeffs p a b P)"
+    using coeff_cb coeff_ab R01 by simp
+qed
+
+lemma Bernstein_coeffs_split_mid:
+  fixes P :: "real poly"
+  assumes ab: "a < b" and deg: "degree P \<le> p"
+  defines "m \<equiv> (a + b) / 2"
+  shows
+    "Bernstein_coeffs p a m P = dc_left (1/2) (Bernstein_coeffs p a b P)"
+    "Bernstein_coeffs p m b P = dc_right (1/2) (Bernstein_coeffs p a b P)"
+proof -
+  have am: "a < m" and mb: "m < b"
+    using ab by (simp_all add: m_def)
+
+  have t_half: "(m - a) / (b - a) = (1/2::real)"
+    using ab by (simp add: m_def field_simps)
+
+  have L:
+    "Bernstein_coeffs p a m P =
+     dc_left ((m - a) / (b - a)) (Bernstein_coeffs p a b P)"
+    using Bernstein_coeffs_split(1) am deg mb by blast
+
+  have R:
+    "Bernstein_coeffs p m b P =
+     dc_right ((m - a) / (b - a)) (Bernstein_coeffs p a b P)"
+    using Bernstein_coeffs_split(2) am deg mb by blast
+
+  show "Bernstein_coeffs p a m P = dc_left (1/2) (Bernstein_coeffs p a b P)"
+    using L by (simp add: t_half)
+
+  show "Bernstein_coeffs p m b P = dc_right (1/2) (Bernstein_coeffs p a b P)"
+    using R by (simp add: t_half)
+qed
+
+
+
 
 end

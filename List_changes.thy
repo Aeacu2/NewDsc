@@ -6,7 +6,162 @@ imports
   "Descartes_Sign_Rule.Descartes_Sign_Rule"
 begin
 
-find_theorems List.insert
+
+lemma changes_filter_zeros: "changes xs = changes (filter (\<lambda>x. x \<noteq> 0) xs)"
+proof (induction xs rule: changes.induct)
+  case 1 then show ?case by simp
+next
+  case (2 x) then show ?case by simp
+next
+  case (3 x1 x2 xs)
+  show ?case
+  proof (cases "x2 = 0")
+    case True
+    (* If x2 is 0, changes skips it. Filter also removes it. *)
+    have "changes (x1 # x2 # xs) = changes (x1 # xs)"
+      using True by (simp)
+    also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # xs))"
+      by (metis changes_filter_eq)
+    also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # x2 # xs))"
+      using True by simp
+    finally show ?thesis .
+  next
+    case False
+    (* If x2 != 0, we check x1 *)
+    note x2_nz = False
+    show ?thesis
+    proof (cases "x1 = 0")
+      case True
+      (* If x1 is 0, changes (0 # x2 # xs). 0*x2 is 0 (not < 0). x2!=0. 
+         So changes reduces to changes (x2 # xs).
+         Filter removes x1. Result matches. *)
+      have "changes (x1 # x2 # xs) = changes (x2 # xs)"
+        using True x2_nz by simp
+      also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x2 # xs))"
+        using "3.IH"(1,3) x2_nz by blast
+      also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # x2 # xs))"
+        using True by simp
+      finally show ?thesis .
+    next
+      case False
+      (* Both non-zero. Changes logic applies. Filter keeps both. *)
+      have "changes (x1 # x2 # xs) = (if x1*x2 < 0 then 1 else 0) + changes (x2 # xs)"
+        using x2_nz by simp
+      also have "\<dots> = (if x1*x2 < 0 then 1 else 0) + changes (filter (\<lambda>x. x \<noteq> 0) (x2 # xs))"
+        using "3.IH"(1,3) x2_nz by presburger
+      also have "\<dots> = changes (x1 # x2 # (filter (\<lambda>x. x \<noteq> 0) xs))"
+        using x2_nz False by simp
+      also have "\<dots> = changes (filter (\<lambda>x. x \<noteq> 0) (x1 # x2 # xs))"
+        using x2_nz False by simp
+      finally show ?thesis .
+    qed
+  qed
+qed
+
+(* Lemma 2: Equivalence for zero-free lists *)
+lemma changes_eq_sign_changes_no_zeros:
+  assumes "\<forall>x \<in> set xs. x \<noteq> 0"
+  shows "changes xs = int (sign_changes xs)"
+  using assms
+proof (induction xs rule: induct_list012)
+  case 1 then show ?case by (simp add: sign_changes_def)
+next
+  case (2 x) then show ?case 
+    by (simp add: sign_changes_def Let_def)
+next
+  case (3 x1 x2 xs)
+  have x1_nz: "x1 \<noteq> 0" and x2_nz: "x2 \<noteq> 0" and xs_nz: "\<forall>x \<in> set xs. x \<noteq> 0"
+    using 3 by auto
+    
+  (* Simplify sign_changes for the list x1#x2#xs *)
+  let ?L = "x1 # x2 # xs"
+  let ?sgn_L = "remdups_adj (map sgn ?L)"
+  
+  (* Determine if signs flip *)
+  have sgn_rel: "sgn x1 \<noteq> sgn x2 \<longleftrightarrow> x1 * x2 < 0"
+    using x1_nz x2_nz
+    by (simp add: mult_less_0_iff sgn_1_neg sgn_if)
+    
+  show ?case
+  proof (cases "x1 * x2 < 0")
+    case True
+    (* Signs differ *)
+    have "sgn x1 \<noteq> sgn x2" using sgn_rel True by simp
+    
+    (* changes logic: *)
+    have ch_L: "changes ?L = 1 + changes (x2 # xs)"
+      using True by simp
+      
+    (* sign_changes logic: *)
+    (* Since x1, x2 != 0, filter keeps them. *)
+    (* remdups_adj (sgn x1 # sgn x2 # ...) keeps sgn x1 because it differs from sgn x2 *)
+    
+    have "sign_changes ?L = length (remdups_adj (map sgn (x1#x2#xs))) - 1"
+      using x1_nz x2_nz xs_nz 
+      unfolding sign_changes_def 
+      by (simp add: filter_id_conv sgn_eq_0_iff)
+    also have "\<dots> = length (sgn x1 # remdups_adj (map sgn (x2#xs))) - 1"
+      using `sgn x1 \<noteq> sgn x2` by auto
+    also have "\<dots> = 1 + (length (remdups_adj (map sgn (x2#xs))) - 1)"
+      (* map sgn (x2#xs) is non-empty, so remdups is non-empty *)
+      by (simp add: algebra_simps)
+    also have "\<dots> = 1 + sign_changes (x2 # xs)"
+      using x2_nz xs_nz unfolding sign_changes_def 
+      by (metis True calculation sign_changes_Cons_Cons_different
+          sign_changes_def)
+      
+    finally show ?thesis 
+      using "3.IH"(2) ch_L x2_nz xs_nz by auto
+  next
+    case False
+    (* Signs same (or zero, but zero ruled out) *)
+    have "sgn x1 = sgn x2" 
+      using sgn_rel False x1_nz x2_nz 
+      by metis
+      
+    (* changes logic: *)
+    have ch_L: "changes ?L = changes (x2 # xs)"
+      using False x2_nz by simp
+      
+    (* sign_changes logic: *)
+    have "remdups_adj (map sgn (x1#x2#xs)) = remdups_adj (map sgn (x2#xs))"
+      using `sgn x1 = sgn x2` by force
+      
+    then have "sign_changes ?L = sign_changes (x2 # xs)"
+      unfolding sign_changes_def using x1_nz x2_nz xs_nz 
+      by force
+      
+    show ?thesis
+      using "3.IH"(2) \<open>sign_changes (x1 # x2 # xs) = sign_changes (x2 # xs)\<close> ch_L x2_nz
+        xs_nz by force
+  qed
+qed
+
+lemma changes_eq_sign_changes: "changes xs = int (sign_changes xs)"
+proof -
+  let ?xs' = "filter (\<lambda>x. x \<noteq> 0) xs"
+  
+  (* 1. changes is invariant under filter *)
+  have "changes xs = changes ?xs'" 
+    using changes_filter_zeros 
+  by blast
+    
+  (* 2. sign_changes is invariant under filter (by definition) *)
+  have "sign_changes xs = sign_changes ?xs'"
+    unfolding sign_changes_def 
+    by (metis sign_changes_def sign_changes_filter)
+    
+  (* 3. Equivalence holds for zero-free lists *)
+  have "changes ?xs' = int (sign_changes ?xs')"
+    apply (rule changes_eq_sign_changes_no_zeros)
+    by simp
+    
+  show ?thesis
+    using `changes xs = changes ?xs'` `sign_changes xs = sign_changes ?xs'` 
+          `changes ?xs' = int (sign_changes ?xs')`
+    by simp
+qed
+
 
 lemma sign_changes_convex_insert:
   fixes x y t :: real

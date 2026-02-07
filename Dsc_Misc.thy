@@ -2,23 +2,9 @@ theory Dsc_Misc
   imports
     Main
     "Three_Circles.Three_Circles"
-
+    "Polynomial_Factorization.Square_Free_Factorization"
+    List_changes
 begin
-
-declare [[code drop: reciprocal_poly]]
-
-lemma Poly_eq_foldr_pCons:
-  fixes xs :: "'a::zero list"
-  shows "Poly xs = foldr pCons xs (0::'a poly)"
-  by (induction xs) simp_all
-
-(* Code equation for reciprocal_poly (keeps executable code in sync with the definition). *)
-lemma reciprocal_poly_code [code]:
-  "reciprocal_poly pa (p :: 'a::zero poly) =
-     foldr pCons (rev (coeffs p @ replicate (pa - degree p) 0)) 0"
-  by (simp add: Poly_eq_foldr_pCons reciprocal_poly_def)
-
-value "Bernstein_changes 3 (-2) 2 [:-1,0,0,1:]"
 
 definition mu :: "real \<Rightarrow> real \<Rightarrow> real \<Rightarrow> nat"
   where "mu \<delta> a b = nat (ceiling (((b - a) / \<delta>)))"
@@ -641,8 +627,6 @@ proof -
   thus ?thesis .
 qed
 
-find_theorems upper_circle
-
 lemma halfplane_cover:
   "{x::complex. 0 < Re x} \<subseteq> {x. Im x < sqrt 3 * Re x} \<union> {x. Im x > - sqrt 3 * Re x}"
 proof
@@ -888,7 +872,6 @@ qed
 
 lemma Bernstein_changes_point: "Bernstein_changes p a a P = 0"
 proof -
-  \<comment> \<open>1. Simplify the polynomial composition for interval [a, a]\<close>
   let ?Q = "P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p [:0, a - a:]"
   have "[:0, a - a:] = 0" by simp
   hence "?Q = P \<circ>\<^sub>p [:a, 1:] \<circ>\<^sub>p 0" by simp
@@ -896,8 +879,6 @@ proof -
   by (simp add: pcompose_0')
   finally have Q_val: "?Q = [:poly P a:]" .
 
-  \<comment> \<open>2. Analyze the Bernstein coefficients\<close>
-  \<comment> \<open>Bernstein_coeffs is defined as a list of specific coefficients of the transformed poly\<close>
   have "Bernstein_coeffs p a a P = replicate (p+1) (poly P a)"
   proof (rule nth_equalityI)
     show "length (Bernstein_coeffs p a a P) = length (replicate (p + 1) (poly P a))"
@@ -906,7 +887,6 @@ proof -
     fix i assume "i < length (Bernstein_coeffs p a a P)"
     hence i_bounds: "i \<le> p" unfolding Bernstein_coeffs_def by simp
     
-    \<comment> \<open>Calculate the term at index i\<close>
     let ?R = "reciprocal_poly p ?Q \<circ>\<^sub>p [:1, 1:]"
     
     have "reciprocal_poly p ?Q = monom (poly P a) p"
@@ -931,7 +911,6 @@ proof -
           add_0 diff_zero length_map length_upt nth_map_upt nth_replicate)
   qed
 
-  \<comment> \<open>3. Changes of a constant list is 0\<close>
   have "changes (replicate (p+1) (poly P a)) = 0"
   proof (induction p)
     case 0 then show ?case by simp
@@ -948,9 +927,21 @@ proof -
     by (simp add: \<open>Bernstein_coeffs p a a P = replicate (p+1) (poly P a)\<close>)
 qed
 
-
 definition dsc_pair_ok :: "real poly \<Rightarrow> (real \<times> real) \<Rightarrow> bool" where
   "dsc_pair_ok P I \<longleftrightarrow>
      ((fst I = snd I \<and> poly P (fst I) = 0) \<or>
       (fst I < snd I \<and> roots_in P (fst I) (snd I) = 1))"
+
+lemma square_free_liftC:
+  assumes"square_free (p::(real poly))"
+  shows "square_free(map_poly (of_real :: real ⇒ complex) p)"
+  by (simp add: assms field_hom_0'.intro field_hom_0'.square_free_map_poly
+      of_real_hom.field_hom_axioms)
+
+lemma rsquarefree_lift:
+  assumes"square_free (p::(real poly))"
+  shows "rsquarefree(map_poly (of_real :: real ⇒ complex) p)"
+  by (simp add: assms square_free_liftC square_free_rsquarefree)
+
+
 end

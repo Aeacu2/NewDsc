@@ -1,7 +1,7 @@
 theory Radical
   imports "Polynomial_Factorization.Square_Free_Factorization"
           "Polynomial_Factorization.Gcd_Rat_Poly"
-           "Sturm_Sequences.Misc_Polynomial"
+          "Sturm_Sequences.Misc_Polynomial"
 begin
 
 lemma poly_prod_list_eq_0_iff:
@@ -24,6 +24,8 @@ next
     by simp
   finally show ?case .
 qed
+
+
 
 definition radical_rat_poly :: "rat poly \<Rightarrow> rat poly" where
   "radical_rat_poly p =
@@ -95,17 +97,6 @@ lemma square_free_liftR:
   shows "square_free(map_poly (of_rat :: rat \<Rightarrow> real) p)"
   by (simp add: assms field_hom_0'.intro field_hom_0'.square_free_map_poly
       of_rat_hom.field_hom_axioms)
-
-lemma square_free_liftC:
-  assumes"square_free (p::(real poly))"
-  shows "square_free(map_poly (of_real :: real \<Rightarrow> complex) p)"
-  by (simp add: assms field_hom_0'.intro field_hom_0'.square_free_map_poly
-      of_real_hom.field_hom_axioms)
-
-lemma rsquarefree_lift:
-  assumes"square_free (p::(real poly))"
-  shows "rsquarefree(map_poly (of_real :: real \<Rightarrow> complex) p)"
-  by (simp add: assms square_free_liftC square_free_rsquarefree)
 
 lemma of_rat_sum_atMost:
   fixes g :: "nat \<Rightarrow> rat"
@@ -341,6 +332,8 @@ next
     using poly_div_gcd_squarefree[of p] by fastforce
   finally show ?thesis .
 qed
+
+
 
 
 end
